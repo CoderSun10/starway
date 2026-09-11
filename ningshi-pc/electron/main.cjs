@@ -91,7 +91,7 @@ function showMainWindow() {
 function createTray() {
   if (tray) return;
   tray = new Tray(loadTrayIcon());
-  tray.setToolTip('凝时 · 专注计划');
+  tray.setToolTip('星程');
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示主窗口',
@@ -101,7 +101,7 @@ function createTray() {
       label: '开始专注',
       click: () => {
         showMainWindow();
-        mainWindow?.webContents.send('navigate', '/');
+        mainWindow?.webContents.send('navigate', '/focus');
       },
     },
     { type: 'separator' },
@@ -118,6 +118,11 @@ function createTray() {
   tray.on('click', () => showMainWindow());
 }
 
+function emitMaximized() {
+  if (!mainWindow) return;
+  mainWindow.webContents.send('window:maximized', mainWindow.isMaximized());
+}
+
 function createWindow() {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
@@ -125,9 +130,13 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 680,
-    title: '凝时 · 专注计划',
-    backgroundColor: '#0b0d12',
+    title: '星程',
+    backgroundColor: '#00000000',
     show: false,
+    frame: false,
+    transparent: true,
+    roundedCorners: true,
+    hasShadow: true,
     autoHideMenuBar: true,
     icon,
     webPreferences: {
@@ -147,6 +156,8 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.on('maximize', emitMaximized);
+  mainWindow.on('unmaximize', emitMaximized);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -195,7 +206,7 @@ function registerIpc() {
   ipcMain.handle('desktop:showNotification', (_e, { title, body }) => {
     if (!Notification.isSupported()) return false;
     const n = new Notification({
-      title: title || '凝时',
+      title: title || '星程',
       body: body || '',
       icon: loadAppIcon(),
     });
@@ -212,6 +223,27 @@ function registerIpc() {
   ipcMain.handle('desktop:quit', () => {
     isQuitting = true;
     app.quit();
+  });
+
+  ipcMain.handle('window:minimize', () => {
+    mainWindow?.minimize();
+    return true;
+  });
+  ipcMain.handle('window:toggleMaximize', () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle('window:close', () => {
+    mainWindow?.close();
+    return true;
+  });
+  ipcMain.handle('window:isMaximized', () => !!mainWindow?.isMaximized());
+
+  ipcMain.handle('desktop:setTrayTooltip', (_e, text) => {
+    if (tray) tray.setToolTip(String(text || '星程'));
+    return { ok: true };
   });
 }
 

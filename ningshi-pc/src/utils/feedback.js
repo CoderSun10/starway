@@ -140,7 +140,7 @@ export async function playFinishFeedback(options = {}) {
     soundOk = !!r.ok;
   }
   if (wantNotify) {
-    await showSystemNotification('专注时间结束', '请回到凝时记录本次专注内容。');
+    await showSystemNotification('专注时间结束', '请回到星程记录本次专注内容。');
   }
   return { soundOk };
 }

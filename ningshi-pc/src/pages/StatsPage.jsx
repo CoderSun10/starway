@@ -4,10 +4,12 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Customized,
   Line,
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Sector,
   Tooltip,
@@ -19,7 +21,7 @@ import {
   fetchBySchedule,
   fetchDailyStats,
   fetchOverview,
-  fetchSessions,
+  fetchSessionsPaged,
 } from '../services/api';
 import {
   formatDateTime,
@@ -27,11 +29,13 @@ import {
   formatMinutesVerbose,
   todayStr,
 } from '../utils/time';
+import { formatFen } from '../utils/money';
 import {
   Button,
   Card,
   Chip,
   Empty,
+  IconButton,
   Loading,
   PageHeader,
 } from '../components/ui';
@@ -40,7 +44,7 @@ import { toast } from '../stores/toastStore';
 const PIE_TOP = 5;
 const CHART_H = 260;
 /** 最近会话条数（按时间倒序最新 N 条，不是按天） */
-const SESSION_LIMIT = 20;
+const SESSION_PAGE = 20;
 
 function Mins({ value }) {
   const m = Number(value) || 0;
@@ -48,6 +52,60 @@ function Mins({ value }) {
     <span className="mins-tip" title={formatMinutesVerbose(m)}>
       {formatMinutes(m)}
     </span>
+  );
+}
+
+/**
+ * 平均数字画在 Y 轴刻度同一列。
+ * 落在夹住平均值的两条刻度之间，并上下各留空隙，避免和 200/400 重叠。
+ */
+function AvgYNumber({ yAxisMap, offset, avg, fill, formatter }) {
+  const n = Number(avg);
+  if (!yAxisMap || !Number.isFinite(n) || n <= 0) return null;
+  const axis = Object.values(yAxisMap)[0];
+  if (!axis || typeof axis.scale !== 'function') return null;
+  const ticks = [...new Set((axis.niceTicks || axis.ticks || []).map(Number))]
+    .filter((v) => Number.isFinite(v))
+    .sort((a, b) => a - b);
+  const yLine = axis.scale(n);
+  if (!Number.isFinite(yLine)) return null;
+
+  let lo = ticks.length ? ticks[0] : null;
+  let hi = ticks.length ? ticks[ticks.length - 1] : null;
+  for (let i = 0; i < ticks.length - 1; i += 1) {
+    if (n >= ticks[i] && n <= ticks[i + 1]) {
+      lo = ticks[i];
+      hi = ticks[i + 1];
+      break;
+    }
+  }
+  const yA = lo == null ? offset?.top : axis.scale(lo);
+  const yB = hi == null ? (offset?.top || 0) + (offset?.height || 0) : axis.scale(hi);
+  if (!Number.isFinite(yA) || !Number.isFinite(yB)) return null;
+  const yTop = Math.min(yA, yB);
+  const yBot = Math.max(yA, yB);
+  const pad = 13;
+  let y = yLine;
+  if (yBot - yTop > pad * 2) {
+    y = Math.min(yBot - pad, Math.max(yTop + pad, yLine));
+  } else {
+    y = (yTop + yBot) / 2;
+  }
+
+  const x = (axis.x || 0) + (axis.width || 0);
+  const text = formatter ? formatter(Math.round(n)) : String(Math.round(n));
+  return (
+    <text
+      x={x}
+      y={y}
+      dy={4}
+      textAnchor="end"
+      fontSize={11}
+      fontWeight={700}
+      fill={fill}
+    >
+      {text}
+    </text>
   );
 }
 
@@ -75,16 +133,11 @@ function renderActiveShape(props) {
     startAngle,
     endAngle,
     fill,
-    payload,
-    percent,
     midAngle,
   } = props;
   const RADIAN = Math.PI / 180;
-  const sin = Math.sin(-RADIAN * midAngle);
-  const cos = Math.cos(-RADIAN * midAngle);
-  // 扇区整体略微沿半径外移
-  const ox = cos * 8;
-  const oy = sin * 8;
+  const ox = Math.cos(-RADIAN * midAngle) * 6;
+  const oy = Math.sin(-RADIAN * midAngle) * 6;
 
   return (
     <g style={{ outline: 'none' }}>
@@ -92,35 +145,22 @@ function renderActiveShape(props) {
         cx={cx + ox}
         cy={cy + oy}
         innerRadius={innerRadius}
-        outerRadius={outerRadius + 14}
+        outerRadius={outerRadius + 10}
         startAngle={startAngle}
         endAngle={endAngle}
         fill={fill}
-        stroke="rgba(255,255,255,0.25)"
-        strokeWidth={1}
+        stroke="transparent"
         style={{
-          filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.35))',
+          filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.22))',
           outline: 'none',
-          transition: 'all 0.2s ease',
         }}
       />
-      <text
-        x={cx + cos * (outerRadius + 28)}
-        y={cy + sin * (outerRadius + 28)}
-        textAnchor={cos >= 0 ? 'start' : 'end'}
-        dominantBaseline="central"
-        fill={fill}
-        fontSize={12}
-        fontWeight={700}
-        style={{ pointerEvents: 'none', userSelect: 'none' }}
-      >
-        {payload.name} {Math.round((percent || 0) * 100)}%
-      </text>
     </g>
   );
 }
 
-export default function StatsPage() {
+export default function StatsPage({ mode = 'focus' }) {
+  const isMoney = mode === 'money';
   const t = useTheme();
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
@@ -128,27 +168,51 @@ export default function StatsPage() {
   const [daily, setDaily] = useState([]);
   const [bySchedule, setBySchedule] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [pieActive, setPieActive] = useState(null);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [sessionLimit, setSessionLimit] = useState(SESSION_PAGE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pieHover, setPieHover] = useState(null);
+  const [pieSelected, setPieSelected] = useState(null);
+  const pieActive = pieHover ?? pieSelected;
 
   const load = useCallback(async () => {
     const today = todayStr();
     try {
-      const [ov, d, bs, se] = await Promise.all([
+      const [ov, d, bs, page] = await Promise.all([
         fetchOverview({ today }),
         fetchDailyStats({ days, today }),
         fetchBySchedule({ days, today }),
-        fetchSessions({ limit: SESSION_LIMIT }),
+        fetchSessionsPaged({ limit: SESSION_PAGE }),
       ]);
       setOverview(ov);
       setDaily(d || []);
       setBySchedule(bs || []);
-      setSessions(se || []);
+      setSessions(page.list);
+      setSessionTotal(page.total);
+      setSessionLimit(SESSION_PAGE);
     } catch (e) {
       toast.error('统计加载失败', e.message);
     } finally {
       setLoading(false);
     }
   }, [days]);
+
+  async function loadMoreSessions() {
+    const next = sessionLimit + SESSION_PAGE;
+    setLoadingMore(true);
+    try {
+      const page = await fetchSessionsPaged({ limit: next });
+      setSessions(page.list);
+      setSessionTotal(page.total);
+      setSessionLimit(next);
+    } catch (e) {
+      toast.error('加载更多失败', e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+
 
   useEffect(() => {
     setLoading(true);
@@ -160,11 +224,22 @@ export default function StatsPage() {
       (daily || []).map((x) => ({
         day: String(x.day).slice(5),
         minutes: Number(x.total_minutes) || 0,
+        spend_fen: Number(x.spend_fen) || 0,
       })),
     [daily]
   );
 
   const hasDaily = barData.some((x) => x.minutes > 0);
+  const hasSpend = barData.some((x) => x.spend_fen > 0);
+  const avgMinutes =
+    barData.length > 0
+      ? barData.reduce((s, x) => s + x.minutes, 0) / barData.length
+      : 0;
+  const avgSpend =
+    barData.length > 0
+      ? barData.reduce((s, x) => s + x.spend_fen, 0) / barData.length
+      : 0;
+
 
   const pieData = useMemo(() => {
     const list = (bySchedule || []).filter((x) => Number(x.total_minutes) > 0);
@@ -216,8 +291,12 @@ export default function StatsPage() {
   return (
     <div className="stack">
       <PageHeader
-        title="专注统计"
-        sub={`图表：近 ${days} 天 · 会话：最近 ${SESSION_LIMIT} 条`}
+        title={isMoney ? '用度统计' : '专注统计'}
+        sub={
+          isMoney
+            ? `近 ${days} 天花费`
+            : `图表：近 ${days} 天 · 会话可加载更多`
+        }
         right={
           <Button
             variant="ghost"
@@ -231,7 +310,7 @@ export default function StatsPage() {
         }
       />
 
-      {/* 今日 / 本周 / 本月：强制同高同宽 */}
+      {!isMoney ? (
       <div className="kpi-row">
         {kpiItems.map((item) => (
           <Card key={item.label}>
@@ -247,6 +326,24 @@ export default function StatsPage() {
           </Card>
         ))}
       </div>
+      ) : (
+      <div className="kpi-row">
+        {[
+          { label: '今日花费', value: overview?.today_spend_fen || 0 },
+          { label: '本周花费', value: overview?.week_spend_fen || 0 },
+          { label: '本月花费', value: overview?.month_spend_fen || 0 },
+        ].map((item) => (
+          <Card key={item.label}>
+            <div className="kpi-label" style={{ color: t.textSecondary }}>
+              {item.label}
+            </div>
+            <div className="kpi-value" style={{ color: t.accent }}>
+              {formatFen(item.value)}
+            </div>
+          </Card>
+        ))}
+      </div>
+      )}
 
       <div className="chip-row" style={{ marginBottom: 14 }}>
         {[7, 30].map((d) => (
@@ -256,6 +353,7 @@ export default function StatsPage() {
         ))}
       </div>
 
+      {!isMoney && (
       <div className="grid-2" style={{ marginBottom: 14 }}>
         <ChartPanel title="每日专注（分钟）" empty={!hasDaily} emptyTitle="暂无柱状图数据">
           <div style={{ width: '100%', height: CHART_H }}>
@@ -272,6 +370,21 @@ export default function StatsPage() {
                   formatter={(v) => [formatMinutes(v), '专注']}
                   labelFormatter={(l) => `${l}`}
                   animationDuration={200}
+                />
+                <ReferenceLine
+                  y={avgMinutes}
+                  stroke={t.danger}
+                  strokeDasharray="5 4"
+                  strokeWidth={1.4}
+                />
+                <Customized
+                  component={(props) => (
+                    <AvgYNumber
+                      {...props}
+                      avg={avgMinutes}
+                      fill={t.danger}
+                    />
+                  )}
                 />
                 <Bar
                   dataKey="minutes"
@@ -317,7 +430,89 @@ export default function StatsPage() {
           </div>
         </ChartPanel>
       </div>
+      )}
+      {isMoney && (
+      <div className="grid-2" style={{ marginBottom: 14 }}>
+        <ChartPanel title="每日花费" empty={!hasSpend} emptyTitle="暂无花费数据">
+          <div style={{ width: '100%', height: CHART_H }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={barData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid stroke={t.border} strokeDasharray="3 3" />
+                <XAxis dataKey="day" stroke={t.textSecondary} fontSize={11} />
+                <YAxis
+                  stroke={t.textSecondary}
+                  fontSize={11}
+                  tickFormatter={(v) => formatFen(v)}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v) => [formatFen(v), '花费']}
+                  animationDuration={200}
+                />
+                <ReferenceLine
+                  y={avgSpend}
+                  stroke={t.danger}
+                  strokeDasharray="5 4"
+                  strokeWidth={1.4}
+                />
+                <Customized
+                  component={(props) => (
+                    <AvgYNumber
+                      {...props}
+                      avg={avgSpend}
+                      fill={t.danger}
+                      formatter={(v) => formatFen(v)}
+                    />
+                  )}
+                />
+                <Bar
+                  dataKey="spend_fen"
+                  fill={t.accent}
+                  radius={[6, 6, 0, 0]}
+                  isAnimationActive
+                  animationDuration={700}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartPanel>
+        <ChartPanel title="花费趋势" empty={!hasSpend} emptyTitle="暂无花费趋势">
+          <div style={{ width: '100%', height: CHART_H }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={barData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid stroke={t.border} strokeDasharray="3 3" />
+                <XAxis dataKey="day" stroke={t.textSecondary} fontSize={11} />
+                <YAxis
+                  stroke={t.textSecondary}
+                  fontSize={11}
+                  tickFormatter={(v) => formatFen(v)}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v) => [formatFen(v), '花费']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="spend_fen"
+                  stroke={t.accent}
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: t.accent }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartPanel>
+      </div>
+      )}
 
+      {!isMoney && (
+      <div>
       <Card style={{ marginBottom: 14 }}>
         <h3 className="chart-card-title" style={{ color: t.text }}>
           按计划时长分布（近 {days} 天）
@@ -352,16 +547,16 @@ export default function StatsPage() {
                         outerRadius={105}
                         activeIndex={pieActive ?? undefined}
                         activeShape={renderActiveShape}
-                        onMouseEnter={(_, i) => setPieActive(i)}
-                        onMouseLeave={() => setPieActive(null)}
+                        onMouseEnter={(_, i) => setPieHover(i)}
+                        onMouseLeave={() => setPieHover(null)}
                         onClick={(_, i, e) => {
                           e?.preventDefault?.();
                           e?.stopPropagation?.();
-                          setPieActive(i);
+                          setPieSelected((cur) => (cur === i ? null : i));
                         }}
                         isAnimationActive
                         animationBegin={0}
-                        animationDuration={750}
+                        animationDuration={900}
                         animationEasing="ease-out"
                         style={{ outline: 'none' }}
                       >
@@ -375,52 +570,32 @@ export default function StatsPage() {
                               cursor: 'pointer',
                               opacity:
                                 pieActive == null || pieActive === i ? 1 : 0.4,
-                              transition: 'opacity 0.2s ease',
+                              transition: 'opacity 0.35s ease',
                             }}
                           />
                         ))}
                       </Pie>
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(v, name) => [
-                          `${formatMinutes(v)}（${formatMinutesVerbose(v)}）`,
-                          name,
-                        ]}
-                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* 右侧常显图例：色块 + 名称 + 分钟 + 占比 */}
-                <div
-                  className="pie-legend"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                    maxHeight: 300,
-                    overflowY: 'auto',
-                    paddingRight: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: t.textSecondary,
-                      marginBottom: 2,
-                    }}
-                  >
+                <div className="pie-legend" style={{ height: 300, maxHeight: 300 }}>
+                  <div className="pie-legend-head" style={{ color: t.textSecondary }}>
                     图例说明
                   </div>
+                  <div className="pie-legend-list">
                   {pieData.map((item, i) => {
                     const pct = Math.round((Number(item.value) / total) * 100);
                     const active = pieActive === i;
                     return (
                       <div
                         key={`${item.name}-${i}`}
-                        onMouseEnter={() => setPieActive(i)}
-                        onMouseLeave={() => setPieActive(null)}
+                        onMouseEnter={() => setPieHover(i)}
+                        onMouseLeave={() => setPieHover(null)}
+                        onClick={() =>
+                          setPieSelected((cur) => (cur === i ? null : i))
+                        }
                         style={{
                           display: 'grid',
                           gridTemplateColumns: '14px 1fr auto',
@@ -431,7 +606,7 @@ export default function StatsPage() {
                           border: `1px solid ${active ? item.color : t.border}`,
                           background: active ? t.primarySoft : 'transparent',
                           cursor: 'default',
-                          transition: 'border-color 0.15s, background 0.15s',
+                          transition: 'border-color 0.3s ease, background 0.3s ease',
                         }}
                       >
                         <span
@@ -482,14 +657,11 @@ export default function StatsPage() {
                       </div>
                     );
                   })}
+                  </div>
                   <div
+                    className="pie-legend-foot"
                     style={{
-                      marginTop: 4,
-                      paddingTop: 10,
                       borderTop: `1px solid ${t.border}`,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontSize: 12,
                       color: t.textSecondary,
                     }}
                   >
@@ -517,8 +689,7 @@ export default function StatsPage() {
           最近会话
         </h3>
         <p className="muted" style={{ color: t.muted, margin: '0 0 10px' }}>
-          保留最近 {SESSION_LIMIT} 条（按结束时间倒序，不是按天数）·
-          时长显示为分钟，悬停可看「小时+分钟」
+          默认最近 {SESSION_PAGE} 条，可继续加载 · 按时长倒序
         </p>
         {sessions.length === 0 ? (
           <Empty title="还没有专注记录" />
@@ -567,7 +738,36 @@ export default function StatsPage() {
             </tbody>
           </table>
         )}
+        {sessions.length > 0 ? (
+          <div className="session-more">
+            {sessions.length < sessionTotal ? (
+              <Button
+                variant="outline"
+                disabled={loadingMore}
+                onClick={loadMoreSessions}
+              >
+                {loadingMore ? '加载中…' : `显示更多（${sessions.length}/${sessionTotal}）`}
+              </Button>
+            ) : (
+              <p className="muted" style={{ color: t.muted, margin: '8px 0' }}>
+                已经全部显示，没有更多了
+              </p>
+            )}
+            {sessionLimit > SESSION_PAGE ? (
+              <IconButton
+                name="fold"
+                title="收起"
+                onClick={() => {
+                  setSessions((prev) => prev.slice(0, SESSION_PAGE));
+                  setSessionLimit(SESSION_PAGE);
+                }}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </Card>
+      </div>
+      )}
     </div>
   );
 }

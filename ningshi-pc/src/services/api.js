@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 const STORAGE_KEY = 'ningshi_pc_api_base';
-const DEFAULT_API = 'http://127.0.0.1:3001';
+const DEFAULT_API = (
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3001'
+).replace(/\/$/, '');
 
 function loadBase() {
   try {
@@ -80,6 +82,11 @@ export async function fetchSessions(params = {}) {
   return data.data;
 }
 
+export async function fetchSessionsPaged(params = {}) {
+  const { data } = await api.get('/api/sessions', { params });
+  return { list: data.data || [], total: Number(data.total) || 0 };
+}
+
 export async function createSession(payload) {
   const { data } = await api.post('/api/sessions', payload);
   return data.data;
@@ -113,6 +120,56 @@ export async function healthCheck() {
 export async function updateTask(id, payload) {
   const { data } = await api.patch(`/api/tasks/${id}`, payload);
   return data.data;
+}
+
+export async function fetchDaySummary(params = {}) {
+  const { data } = await api.get('/api/stats/day-summary', { params });
+  return data.data;
+}
+
+export async function fetchBudgetPeriods(params = {}) {
+  const { data } = await api.get('/api/budget-periods', { params });
+  return data.data;
+}
+
+export async function fetchBudgetPeriod(id) {
+  const { data } = await api.get(`/api/budget-periods/${id}`);
+  return data.data;
+}
+
+export async function createBudgetPeriod(payload) {
+  const { data } = await api.post('/api/budget-periods', payload);
+  return data.data;
+}
+
+export async function updateBudgetPeriod(id, payload) {
+  const { data } = await api.put(`/api/budget-periods/${id}`, payload);
+  return data.data;
+}
+
+export async function deleteBudgetPeriod(id) {
+  const { data } = await api.delete(`/api/budget-periods/${id}`);
+  return data;
+}
+
+export async function fetchExpenses(params = {}) {
+  const { data } = await api.get('/api/expenses', { params });
+  return data.data;
+}
+
+export async function createExpense(payload) {
+  const { data } = await api.post('/api/expenses', payload);
+  return data.data;
+}
+
+export async function updateExpense(id, payload) {
+  const { data } = await api.put(`/api/expenses/${id}`, payload);
+  return data.data;
+}
+
+export async function deleteExpense(id) {
+  const { data } = await api.delete(`/api/expenses/${id}`);
+  return data;
 }
 
 export default api;

@@ -14,11 +14,25 @@ function load() {
 
 function persist(partial, get) {
   const next = { ...get(), ...partial };
-  const { feedbackMode, ringtoneId, minimizeToTray, openAtLogin } = next;
+  const {
+    feedbackMode,
+    ringtoneId,
+    minimizeToTray,
+    openAtLogin,
+    heatmapTimeMax,
+    heatmapSpendYuan,
+  } = next;
   try {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ feedbackMode, ringtoneId, minimizeToTray, openAtLogin })
+      JSON.stringify({
+        feedbackMode,
+        ringtoneId,
+        minimizeToTray,
+        openAtLogin,
+        heatmapTimeMax,
+        heatmapSpendYuan,
+      })
     );
   } catch {
     // ignore
@@ -32,6 +46,8 @@ export const useSettingsStore = create((set, get) => {
     ringtoneId: saved.ringtoneId || 'beep',
     minimizeToTray: saved.minimizeToTray !== false,
     openAtLogin: !!saved.openAtLogin,
+    heatmapTimeMax: Number(saved.heatmapTimeMax) > 0 ? Number(saved.heatmapTimeMax) : 120,
+    heatmapSpendYuan: Number(saved.heatmapSpendYuan) > 0 ? Number(saved.heatmapSpendYuan) : 100,
     desktopReady: false,
 
     setFeedbackMode(mode) {
@@ -48,6 +64,16 @@ export const useSettingsStore = create((set, get) => {
       if (window.ningshiDesktop?.setMinimizeToTray) {
         await window.ningshiDesktop.setMinimizeToTray(!!enabled);
       }
+    },
+    setHeatmapTimeMax(minutes) {
+      const n = Math.min(600, Math.max(15, Math.round(Number(minutes) || 120)));
+      set({ heatmapTimeMax: n });
+      persist({ heatmapTimeMax: n }, get);
+    },
+    setHeatmapSpendYuan(yuan) {
+      const n = Math.min(100000, Math.max(1, Math.round(Number(yuan) || 100)));
+      set({ heatmapSpendYuan: n });
+      persist({ heatmapSpendYuan: n }, get);
     },
     async setOpenAtLogin(enabled) {
       set({ openAtLogin: !!enabled });

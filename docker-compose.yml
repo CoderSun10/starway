@@ -1,0 +1,87 @@
+# 凝时 · 一键启动：MySQL + API（全 Docker）
+# 在仓库根目录：
+# 1) 复制 .env.example 为 .env 并填写密码
+# 2) docker compose up -d --build
+# 更新 API：docker compose up -d --build api
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ${MYSQL_CONTAINER:-ningshi_mysql}
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_HOST_PORT:-3310}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: focusplan
+      MYSQL_USER: ${MYSQL_USER:-focusplan}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    volumes:
+      - focusplan_mysql_data:/var/lib/mysql
+      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backend/sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "127.0.0.1",
+          "-uroot",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - ningshi_net
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ningshi-api:latest
+    container_name: ${API_CONTAINER:-ningshi_api}
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      HOST: 0.0.0.0
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      DB_NAME: focusplan
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - ningshi_net
+
+volumes:
+  focusplan_mysql_data:
+
+networks:
+  ningshi_net:
+    name: ningshi_net

@@ -15,6 +15,7 @@ import {
   Chip,
   Field,
   PageHeader,
+  NumericInput,
   TextInput,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
@@ -32,6 +33,10 @@ export default function SettingsPage() {
   const setRingtoneId = useSettingsStore((s) => s.setRingtoneId);
   const setMinimizeToTray = useSettingsStore((s) => s.setMinimizeToTray);
   const setOpenAtLogin = useSettingsStore((s) => s.setOpenAtLogin);
+  const heatmapTimeMax = useSettingsStore((s) => s.heatmapTimeMax);
+  const heatmapSpendYuan = useSettingsStore((s) => s.heatmapSpendYuan);
+  const setHeatmapTimeMax = useSettingsStore((s) => s.setHeatmapTimeMax);
+  const setHeatmapSpendYuan = useSettingsStore((s) => s.setHeatmapSpendYuan);
   const hydrateDesktop = useSettingsStore((s) => s.hydrateDesktop);
 
   const [url, setUrl] = useState(getBaseURL());
@@ -92,8 +97,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div>
-      <PageHeader title="设置" sub="主题、提醒、托盘与后端" />
+    <div className="stack">
+      <PageHeader title="设置" sub="主题、日历热力、提醒、托盘与后端" />
 
       <Card>
         <h3 style={{ margin: '0 0 12px', color: t.text }}>主题</h3>
@@ -108,6 +113,31 @@ export default function SettingsPage() {
             </Chip>
           ))}
         </div>
+      </Card>
+
+      <Card>
+        <h3 style={{ margin: '0 0 8px', color: t.text }}>日历热力图阈值</h3>
+        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
+          打开日历 → 点「热力图」后，格子颜色深浅按当天数值相对下面满格值计算。
+        </p>
+        <Field label="时间满格（分钟）">
+          <NumericInput
+            min={15}
+            max={600}
+            value={heatmapTimeMax ?? 120}
+            onCommit={setHeatmapTimeMax}
+            style={{ maxWidth: 200 }}
+          />
+        </Field>
+        <Field label="花费满格（元）">
+          <NumericInput
+            min={1}
+            max={100000}
+            value={heatmapSpendYuan ?? 100}
+            onCommit={setHeatmapSpendYuan}
+            style={{ maxWidth: 200 }}
+          />
+        </Field>
       </Card>
 
       <Card>
@@ -178,7 +208,7 @@ export default function SettingsPage() {
             checked={openAtLogin}
             onChange={(e) => setOpenAtLogin(e.target.checked)}
           />
-          <span>开机自动启动凝时</span>
+          <span>开机自动启动星程</span>
         </label>
       </Card>
 
@@ -211,7 +241,7 @@ export default function SettingsPage() {
           <br />
           运行平台：{platform}
           <br />
-          工程目录：ningshi-pc（与手机 App 源码独立）
+          工程目录：ningshi-pc
         </p>
       </Card>
     </div>

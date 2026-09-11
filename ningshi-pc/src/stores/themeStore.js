@@ -10,7 +10,7 @@ function loadId() {
   } catch {
     // ignore
   }
-  return 'aurora';
+  return 'slate';
 }
 
 export const useThemeStore = create((set, get) => ({
@@ -18,7 +18,7 @@ export const useThemeStore = create((set, get) => ({
   theme: themes[loadId()],
 
   setThemeId(id) {
-    const next = themes[id] || themes.aurora;
+    const next = themes[id] || themes.slate;
     try {
       localStorage.setItem(KEY, next.id);
     } catch {
@@ -50,8 +50,7 @@ function applyThemeToDom(theme) {
   if (typeof document === 'undefined' || !theme) return;
   const root = document.documentElement;
   root.dataset.theme = theme.id;
-  // slate 亮色用 light，其余暗色（避免系统滚动条黑白打架）
-  root.style.colorScheme = theme.id === 'slate' ? 'light' : 'dark';
+  root.style.colorScheme = theme.scheme === 'dark' ? 'dark' : 'light';
   root.style.setProperty('--sb-track', theme.bg || 'transparent');
   root.style.setProperty('--sb-thumb', primaryRgba(theme.primary, 0.38));
   root.style.setProperty('--sb-thumb-hover', primaryRgba(theme.primary, 0.72));

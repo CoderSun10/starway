@@ -9,10 +9,20 @@ contextBridge.exposeInMainWorld('ningshiDesktop', {
     ipcRenderer.invoke('desktop:showNotification', payload || {}),
   showWindow: () => ipcRenderer.invoke('desktop:showWindow'),
   quit: () => ipcRenderer.invoke('desktop:quit'),
+  setTrayTooltip: (text) => ipcRenderer.invoke('desktop:setTrayTooltip', text),
   onNavigate: (cb) => {
     const handler = (_e, route) => cb(route);
     ipcRenderer.on('navigate', handler);
     return () => ipcRenderer.removeListener('navigate', handler);
   },
   platform: process.platform,
+  minimize: () => ipcRenderer.invoke('window:minimize'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onMaximizedChange: (cb) => {
+    const handler = (_e, value) => cb(!!value);
+    ipcRenderer.on('window:maximized', handler);
+    return () => ipcRenderer.removeListener('window:maximized', handler);
+  },
 });

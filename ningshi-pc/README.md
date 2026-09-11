@@ -1,19 +1,18 @@
-# 凝时 · 桌面端（ningshi-pc）
+# 星程 Starway · 桌面端（ningshi-pc）
 
-独立 Electron 工程，**不依赖** `FocusPlan` App 源码目录。  
-共用同一套后端 API（默认本机 `http://127.0.0.1:3001`）。
-
-宣传与下载页（安装包不在本仓库）：[http://1.116.121.44:5000/](http://1.116.121.44:5000/)
+独立 Electron 工程。  
+共用同一套后端 API（默认本机 `http://127.0.0.1:3001`，见 `.env` 中 `VITE_API_BASE_URL`）。
 
 ## 开发
 
 ```bash
 cd ningshi-pc
+copy .env.example .env
 npm install
 npm run dev
 ```
 
-需先启动后端（例如 FocusPlan 的 Docker：`docker compose up -d`）。
+需先启动后端（仓库根目录：`docker compose up -d --build`）。
 
 ## 打包
 
@@ -42,7 +41,7 @@ npm run dist:linux
 
 ### 图标
 
-与安卓 App 同源：`FocusPlan/assets/icon.png`（黑底金表）已复制到 `build/icon.png` / 托盘图标。
+应用图标在 `build/icon.png`，托盘图标在 `build/tray.png`。
 
 ### 已打好的 Windows 产物（本机）
 

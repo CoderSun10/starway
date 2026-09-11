@@ -10,6 +10,7 @@ export const useTimerStore = create((set, get) => ({
   startedAtIso: null,
   endsAtMs: null,
   presets: PRESETS,
+  finishGeneration: 0,
 
   setPlannedMinutes(minutes) {
     const m = Math.min(200, Math.max(1, Math.round(Number(minutes) || 1)));
@@ -115,5 +116,11 @@ export const useTimerStore = create((set, get) => ({
       startedAtIso: null,
       endsAtMs: null,
     });
+  },
+
+  requestFinish() {
+    const { status } = get();
+    if (status !== 'running' && status !== 'paused' && status !== 'finished') return;
+    set({ finishGeneration: get().finishGeneration + 1 });
   },
 }));

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../stores/themeStore';
 
 export function Card({ children, style, className = '' }) {
@@ -17,6 +18,61 @@ export function Card({ children, style, className = '' }) {
     >
       {children}
     </div>
+  );
+}
+
+export function IconButton({ name, onClick, title, danger, disabled }) {
+  const t = useTheme();
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  };
+  let icon = null;
+  if (name === 'edit') {
+    icon = (
+      <svg {...common}>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+      </svg>
+    );
+  } else if (name === 'trash') {
+    icon = (
+      <svg {...common}>
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v6M14 11v6" />
+      </svg>
+    );
+  } else if (name === 'fold') {
+    icon = (
+      <svg {...common}>
+        <path d="M6 14l6-6 6 6" />
+      </svg>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        color: danger ? t.danger : t.textSecondary,
+        borderColor: t.border,
+        background: 'transparent',
+      }}
+    >
+      {icon}
+    </button>
   );
 }
 
@@ -62,21 +118,32 @@ export function Button({
   );
 }
 
-export function ProgressBar({ current = 0, total = 1, label }) {
+export function ProgressBar({ current = 0, total = 1, label, tone, percent, fill }) {
   const t = useTheme();
-  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  const raw = total > 0 ? Math.round((current / total) * 100) : 0;
+  const shown = percent != null ? percent : raw;
+  const width = Math.min(100, Math.max(0, raw));
+  const over = tone === 'danger' || (total > 0 && current > total);
+  const done = !over && total > 0 && current >= total;
+  const barColor = over
+    ? t.danger
+    : done
+      ? t.success
+      : fill || t.progressFill;
   return (
-    <div>
+    <div className="progress-wrap">
       {label ? (
-        <div className="row-between" style={{ marginBottom: 6 }}>
-          <span className="muted" style={{ color: t.textSecondary }}>
+        <div className="row-between" style={{ marginBottom: 4 }}>
+          <span className="muted" style={{ color: t.textSecondary, fontSize: 12 }}>
             {label}
           </span>
-          <strong style={{ color: t.primary, fontSize: 12 }}>{pct}%</strong>
+          <strong style={{ color: barColor, fontSize: 12 }}>
+            {shown}%
+          </strong>
         </div>
       ) : null}
       <div className="progress" style={{ background: t.progressTrack }}>
-        <i style={{ width: `${pct}%`, background: t.progressFill }} />
+        <i style={{ width: `${width}%`, background: barColor }} />
       </div>
     </div>
   );
@@ -119,6 +186,86 @@ export function TextInput(props) {
         background: t.inputBg,
         color: t.text,
         ...(props.style || {}),
+      }}
+    />
+  );
+}
+
+/** 数字框：输入中可全部删掉再重填；失焦后才按 min/max 收口 */
+export function NumericInput({
+  value,
+  onChange,
+  onCommit,
+  min,
+  max,
+  integer = true,
+  disabled,
+  style,
+  className = '',
+}) {
+  const t = useTheme();
+  const committed = value === '' || value == null ? '' : String(value);
+  const [text, setText] = useState(committed);
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setText(committed);
+  }, [committed]);
+
+  function sanitize(raw) {
+    if (integer) return String(raw).replace(/[^\d]/g, '');
+    const s = String(raw).replace(/[^\d.]/g, '');
+    const i = s.indexOf('.');
+    if (i === -1) return s;
+    return s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+  }
+
+  function parse(raw) {
+    if (raw === '' || raw === '.') return null;
+    const n = integer ? parseInt(raw, 10) : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function clamp(n) {
+    let x = n;
+    if (min != null && x < min) x = min;
+    if (max != null && x > max) x = max;
+    return integer ? Math.round(x) : x;
+  }
+
+  return (
+    <input
+      className={`input ${className}`.trim()}
+      type="text"
+      inputMode={integer ? 'numeric' : 'decimal'}
+      disabled={disabled}
+      value={text}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onChange={(e) => {
+        const next = sanitize(e.target.value);
+        setText(next);
+        onChange?.(next);
+      }}
+      onBlur={() => {
+        focused.current = false;
+        const n = parse(text);
+        if (n == null) {
+          setText(committed);
+          onChange?.(committed);
+          return;
+        }
+        const x = clamp(n);
+        setText(String(x));
+        onChange?.(String(x));
+        onCommit?.(x);
+      }}
+      style={{
+        borderColor: t.border,
+        background: t.inputBg,
+        color: t.text,
+        ...(style || {}),
       }}
     />
   );

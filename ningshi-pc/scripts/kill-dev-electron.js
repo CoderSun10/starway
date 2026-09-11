@@ -13,7 +13,7 @@ function run(cmd) {
 }
 
 if (process.platform === 'win32') {
-  // 只杀 electron 开发进程；打包后的「凝时.exe」不杀
+  // 只杀 electron 开发进程；打包后的「星程.exe」不杀
   run('taskkill /F /IM electron.exe /T');
 } else {
   run('pkill -f "electron ." || true');

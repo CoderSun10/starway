@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useTheme } from '../stores/themeStore';
 import { useTimerStore } from '../stores/timerStore';
-import { useSettingsStore } from '../stores/settingsStore';
 import { formatCountdown } from '../utils/time';
-import { playFinishFeedback } from '../utils/feedback';
-import { Button, Card, Chip, PageHeader } from '../components/ui';
-import SessionSaveModal from '../components/SessionSaveModal';
+import { Button, Card, Chip, NumericInput, PageHeader } from '../components/ui';
 
 const R = 130;
 const C = 2 * Math.PI * R;
@@ -20,23 +17,9 @@ export default function TimerPage() {
     setPlannedMinutes,
     start,
     pause,
-    tick,
-    finishAndReset,
+    requestFinish,
     reset,
   } = useTimerStore();
-
-  const [summary, setSummary] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const finishing = useRef(false);
-
-  useEffect(() => {
-    if (status !== 'running') return undefined;
-    const id = setInterval(() => {
-      const left = tick();
-      if (left <= 0) handleFinish();
-    }, 200);
-    return () => clearInterval(id);
-  }, [status]);
 
   const progress = useMemo(() => {
     const total = Math.max(1, plannedMinutes * 60);
@@ -52,29 +35,10 @@ export default function TimerPage() {
           ? '已结束'
           : '就绪';
 
-  async function handleFinish() {
-    if (finishing.current) return;
-    finishing.current = true;
-    try {
-      if (useTimerStore.getState().status === 'running') {
-        tick();
-      }
-      const s = finishAndReset();
-      if (s) {
-        const fb = useSettingsStore.getState().getFeedbackOptions();
-        playFinishFeedback(fb).catch(() => {});
-        setSummary(s);
-        setModalOpen(true);
-      }
-    } finally {
-      finishing.current = false;
-    }
-  }
-
   const busy = status === 'running' || status === 'paused';
 
   return (
-    <div>
+    <div className="timer-page">
       <PageHeader title="专注计时" sub="桌面端墙钟计时，切窗口也不会丢进度" />
 
       <div className="timer-stage">
@@ -131,7 +95,7 @@ export default function TimerPage() {
               </Button>
             ) : null}
             {busy ? (
-              <Button variant="danger" onClick={handleFinish} style={{ minWidth: 120 }}>
+              <Button variant="danger" onClick={requestFinish} style={{ minWidth: 120 }}>
                 结束并保存
               </Button>
             ) : null}
@@ -160,20 +124,13 @@ export default function TimerPage() {
             <label className="label" style={{ color: t.textSecondary }}>
               自定义（1–200 分钟）
             </label>
-            <input
-              className="input"
-              type="number"
+            <NumericInput
               min={1}
               max={200}
               disabled={busy}
               value={plannedMinutes}
-              onChange={(e) => setPlannedMinutes(Number(e.target.value))}
-              style={{
-                borderColor: t.border,
-                background: t.inputBg,
-                color: t.text,
-                maxWidth: 160,
-              }}
+              onCommit={setPlannedMinutes}
+              style={{ maxWidth: 160 }}
             />
           </div>
           <p className="muted" style={{ color: t.muted, marginTop: 16, lineHeight: 1.6 }}>
@@ -184,14 +141,6 @@ export default function TimerPage() {
         </Card>
       </div>
 
-      <SessionSaveModal
-        open={modalOpen}
-        summary={summary}
-        onClose={() => {
-          setModalOpen(false);
-          setSummary(null);
-        }}
-      />
     </div>
   );
 }

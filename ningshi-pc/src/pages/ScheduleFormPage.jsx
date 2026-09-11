@@ -17,6 +17,7 @@ import {
   Field,
   Loading,
   PageHeader,
+  NumericInput,
   TextArea,
   TextInput,
 } from '../components/ui';
@@ -166,21 +167,22 @@ export default function ScheduleFormPage() {
       <Card>
         <Field label="预计总工时">
           <div className="row">
-            <TextInput
-              type="number"
+            <NumericInput
               min={0}
+              max={999}
               style={{ maxWidth: 100 }}
               value={plannedHours}
-              onChange={(e) => setPlannedHours(e.target.value)}
+              onChange={setPlannedHours}
+              onCommit={setPlannedHours}
             />
             <span style={{ color: t.textSecondary }}>小时</span>
-            <TextInput
-              type="number"
+            <NumericInput
               min={0}
               max={59}
               style={{ maxWidth: 100 }}
               value={plannedMins}
-              onChange={(e) => setPlannedMins(e.target.value)}
+              onChange={setPlannedMins}
+              onCommit={setPlannedMins}
             />
             <span style={{ color: t.textSecondary }}>分钟</span>
             <span className="muted" style={{ color: t.muted }}>
@@ -249,16 +251,22 @@ export default function ScheduleFormPage() {
               />
             </Field>
             <Field label="预计分钟">
-              <TextInput
-                type="number"
+              <NumericInput
                 min={1}
+                max={24 * 60}
                 style={{ maxWidth: 120 }}
                 value={task.planned_minutes}
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   setTasks((arr) =>
                     arr.map((x, i) =>
-                      i === index ? { ...x, planned_minutes: Number(v) } : x
+                      i === index ? { ...x, planned_minutes: v } : x
+                    )
+                  );
+                }}
+                onCommit={(n) => {
+                  setTasks((arr) =>
+                    arr.map((x, i) =>
+                      i === index ? { ...x, planned_minutes: n } : x
                     )
                   );
                 }}
