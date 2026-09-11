@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTheme } from '../stores/themeStore';
 
 function isDesktop() {
-  return typeof window !== 'undefined' && !!window.ningshiDesktop?.minimize;
+  return typeof window !== 'undefined' && !!window.starwayDesktop?.minimize;
 }
 
 export default function WindowChrome() {
@@ -12,8 +12,8 @@ export default function WindowChrome() {
 
   useEffect(() => {
     if (!desktop) return undefined;
-    window.ningshiDesktop.isMaximized?.().then(setMaximized).catch(() => {});
-    return window.ningshiDesktop.onMaximizedChange?.(setMaximized);
+    window.starwayDesktop.isMaximized?.().then(setMaximized).catch(() => {});
+    return window.starwayDesktop.onMaximizedChange?.(setMaximized);
   }, [desktop]);
 
   if (!desktop) return null;
@@ -27,7 +27,7 @@ export default function WindowChrome() {
           className="win-btn"
           aria-label="最小化"
           title="最小化"
-          onClick={() => window.ningshiDesktop.minimize()}
+          onClick={() => window.starwayDesktop.minimize()}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
             <rect y="4.5" width="10" height="1.2" rx="0.4" fill="currentColor" />
@@ -38,7 +38,7 @@ export default function WindowChrome() {
           className="win-btn"
           aria-label={maximized ? '还原' : '最大化'}
           title={maximized ? '还原' : '最大化'}
-          onClick={() => window.ningshiDesktop.toggleMaximize()}
+          onClick={() => window.starwayDesktop.toggleMaximize()}
         >
           {maximized ? (
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -68,7 +68,7 @@ export default function WindowChrome() {
           className="win-btn win-btn-close"
           aria-label="关闭"
           title="关闭"
-          onClick={() => window.ningshiDesktop.closeWindow()}
+          onClick={() => window.starwayDesktop.closeWindow()}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
             <path

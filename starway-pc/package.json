@@ -1,10 +1,10 @@
 {
-  "name": "ningshi-pc",
+  "name": "starway-pc",
   "version": "1.0.0",
-  "description": "星程 桌面端 (Windows / Linux)",
-  "homepage": "https://github.com/CoderSun10/ningshi",
+  "description": "星程 Starway 桌面端 (Windows / Linux)",
+  "homepage": "https://github.com/CoderSun10/starway",
   "main": "electron/main.cjs",
-  "author": "Ningshi",
+  "author": "Starway",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -39,7 +39,7 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.ningshi.pc",
+    "appId": "com.starway.pc",
     "productName": "星程",
     "copyright": "Copyright © Xingcheng",
     "directories": {
@@ -80,7 +80,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "Ningshi-${version}-${arch}.${ext}",
+      "artifactName": "Starway-${version}-${arch}.${ext}",
       "signAndEditExecutable": false
     },
     "nsis": {
@@ -89,7 +89,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "星程",
-      "artifactName": "Ningshi-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Starway-Setup-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -102,8 +102,8 @@
       ],
       "icon": "build/icon.png",
       "category": "Office",
-      "maintainer": "Ningshi <ningshi@local>",
-      "artifactName": "ningshi_${version}_${arch}.${ext}"
+      "maintainer": "Starway <starway@local>",
+      "artifactName": "starway_${version}_${arch}.${ext}"
     }
   }
 }

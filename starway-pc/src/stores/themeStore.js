@@ -1,15 +1,12 @@
 import { create } from 'zustand';
 import { themes } from '../constants/themes';
+import { storageGet, storageSet } from '../utils/storage';
 
-const KEY = 'ningshi_pc_theme';
+const KEY = 'starway_pc_theme';
 
 function loadId() {
-  try {
-    const id = localStorage.getItem(KEY);
-    if (id && themes[id]) return id;
-  } catch {
-    // ignore
-  }
+  const id = storageGet(KEY, 'ningshi_pc_theme');
+  if (id && themes[id]) return id;
   return 'slate';
 }
 
@@ -20,7 +17,7 @@ export const useThemeStore = create((set, get) => ({
   setThemeId(id) {
     const next = themes[id] || themes.slate;
     try {
-      localStorage.setItem(KEY, next.id);
+      storageSet(KEY, next.id);
     } catch {
       // ignore
     }

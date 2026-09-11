@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('ningshiDesktop', {
+contextBridge.exposeInMainWorld('starwayDesktop', {
   getInfo: () => ipcRenderer.invoke('desktop:getInfo'),
   setOpenAtLogin: (enabled) => ipcRenderer.invoke('desktop:setOpenAtLogin', enabled),
   setMinimizeToTray: (enabled) =>

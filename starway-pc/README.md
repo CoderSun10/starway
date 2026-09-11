@@ -1,4 +1,4 @@
-# 星程 Starway · 桌面端（ningshi-pc）
+# 星程 Starway · 桌面端
 
 独立 Electron 工程。  
 共用同一套后端 API（默认本机 `http://127.0.0.1:3001`，见 `.env` 中 `VITE_API_BASE_URL`）。
@@ -6,7 +6,7 @@
 ## 开发
 
 ```bash
-cd ningshi-pc
+cd starway-pc
 copy .env.example .env
 npm install
 npm run dev
@@ -18,9 +18,9 @@ npm run dev
 
 | 平台 | 命令 | 产物 |
 |------|------|------|
-| Windows 便携版 | `npm run dist:win` | `release/Ningshi-1.0.0-x64.exe`（免安装） |
-| Windows 安装包 | 同上 | `release/Ningshi-Setup-1.0.0-x64.exe` |
-| Ubuntu | `npm run dist:linux` | `release/ningshi_*.deb` |
+| Windows 便携版 | `npm run dist:win` | `release/Starway-1.0.0-x64.exe`（免安装） |
+| Windows 安装包 | 同上 | `release/Starway-Setup-1.0.0-x64.exe` |
+| Ubuntu | `npm run dist:linux` | `release/starway_*.deb` |
 
 ### 为什么没有 `.deb` 文件？
 
@@ -31,10 +31,10 @@ npm run dev
 在 **Ubuntu 电脑或 WSL** 里生成 deb：
 
 ```bash
-cd ningshi-pc
+cd starway-pc
 npm install
 npm run dist:linux
-# 产物：release/ningshi_1.0.0_amd64.deb
+# 产物：release/starway_1.0.0_amd64.deb
 ```
 
 > 若本机无开发者模式导致签名工具失败，已默认 `signAndEditExecutable: false`。
@@ -43,12 +43,12 @@ npm run dist:linux
 
 应用图标在 `build/icon.png`，托盘图标在 `build/tray.png`。
 
-### 已打好的 Windows 产物（本机）
+### Windows 产物
 
-路径：`ningshi-pc/release/`
+路径：`starway-pc/release/`
 
-- `Ningshi-1.0.0-x64.exe` — 便携版，双击即用  
-- `Ningshi-Setup-1.0.0-x64.exe` — 安装版  
+- `Starway-1.0.0-x64.exe` — 便携版，双击即用  
+- `Starway-Setup-1.0.0-x64.exe` — 安装版  
 
 ## 功能一览
 

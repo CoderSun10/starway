@@ -94,7 +94,7 @@ export default function TimerRuntime() {
   }, [finishGeneration]);
 
   useEffect(() => {
-    const desktop = window.ningshiDesktop;
+    const desktop = window.starwayDesktop;
     if (!desktop?.setTrayTooltip) return undefined;
     const now = Date.now();
     if (now - lastTip.current < 1000 && status === 'running') return undefined;

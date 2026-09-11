@@ -22,6 +22,24 @@ let isQuitting = false;
 
 const prefsPath = path.join(app.getPath('userData'), 'desktop-prefs.json');
 
+function migrateUserData() {
+  const destDir = app.getPath('userData');
+  const destPrefs = path.join(destDir, 'desktop-prefs.json');
+  if (fs.existsSync(destPrefs)) return;
+  const appData = app.getPath('appData');
+  for (const oldName of ['ningshi-pc', 'Ningshi']) {
+    const srcPrefs = path.join(appData, oldName, 'desktop-prefs.json');
+    if (!fs.existsSync(srcPrefs)) continue;
+    try {
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(srcPrefs, destPrefs);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+}
+
 function loadPrefs() {
   // 开发模式：关窗口即退出，避免托盘残留导致下次 npm run dev 秒退
   if (isDev) return { minimizeToTray: false };
@@ -249,6 +267,7 @@ function registerIpc() {
 
 function boot() {
   app.whenReady().then(() => {
+    migrateUserData();
     registerIpc();
     createWindow();
     // 开发模式可不建托盘，避免关不干净

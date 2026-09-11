@@ -1,4 +1,4 @@
-# 凝时 Backend
+# 星程 Starway · Backend
 
 轻量 Node.js + Express + mysql2 REST API，供桌面端调用。
 
@@ -14,8 +14,8 @@ docker compose logs -f api
 
 | 容器 | 名称（可用 `.env` 覆盖） | 端口 |
 |------|------|------|
-| MySQL 8 | `ningshi_mysql` | 3310→3306 |
-| API | `ningshi_api` | 3001→3001 |
+| MySQL 8 | `starway_mysql` | 3310→3306 |
+| API | `starway_api` | 3001→3001 |
 
 容器内 API 通过服务名 `mysql:3306` 连库（不要写 127.0.0.1）。
 

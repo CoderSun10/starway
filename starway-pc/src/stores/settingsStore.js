@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import { storageGet, storageSet } from '../utils/storage';
 
-const KEY = 'ningshi_pc_settings';
+const KEY = 'starway_pc_settings';
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = storageGet(KEY, 'ningshi_pc_settings');
     if (raw) return JSON.parse(raw);
   } catch {
     // ignore
@@ -23,7 +24,7 @@ function persist(partial, get) {
     heatmapSpendYuan,
   } = next;
   try {
-    localStorage.setItem(
+    storageSet(
       KEY,
       JSON.stringify({
         feedbackMode,
@@ -61,8 +62,8 @@ export const useSettingsStore = create((set, get) => {
     async setMinimizeToTray(enabled) {
       set({ minimizeToTray: !!enabled });
       persist({ minimizeToTray: !!enabled }, get);
-      if (window.ningshiDesktop?.setMinimizeToTray) {
-        await window.ningshiDesktop.setMinimizeToTray(!!enabled);
+      if (window.starwayDesktop?.setMinimizeToTray) {
+        await window.starwayDesktop.setMinimizeToTray(!!enabled);
       }
     },
     setHeatmapTimeMax(minutes) {
@@ -78,20 +79,20 @@ export const useSettingsStore = create((set, get) => {
     async setOpenAtLogin(enabled) {
       set({ openAtLogin: !!enabled });
       persist({ openAtLogin: !!enabled }, get);
-      if (window.ningshiDesktop?.setOpenAtLogin) {
-        await window.ningshiDesktop.setOpenAtLogin(!!enabled);
+      if (window.starwayDesktop?.setOpenAtLogin) {
+        await window.starwayDesktop.setOpenAtLogin(!!enabled);
       }
     },
     async hydrateDesktop() {
-      if (!window.ningshiDesktop?.getInfo) {
+      if (!window.starwayDesktop?.getInfo) {
         set({ desktopReady: true });
         return;
       }
       try {
         // 把本地偏好推给主进程（托盘 / 开机启动）
-        await window.ningshiDesktop.setMinimizeToTray(get().minimizeToTray);
-        await window.ningshiDesktop.setOpenAtLogin(get().openAtLogin);
-        const info = await window.ningshiDesktop.getInfo();
+        await window.starwayDesktop.setMinimizeToTray(get().minimizeToTray);
+        await window.starwayDesktop.setOpenAtLogin(get().openAtLogin);
+        const info = await window.starwayDesktop.getInfo();
         if (typeof info.openAtLogin === 'boolean') {
           set({ openAtLogin: info.openAtLogin });
           persist({ openAtLogin: info.openAtLogin }, get);

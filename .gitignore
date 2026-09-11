@@ -7,6 +7,8 @@
 # 宣传页（独立站点，不随本仓库发布）
 # 线上地址：http://1.116.121.44:5000/
 # -----------------------------------------------------------------------------
+starway-promo/
+starway-promo/**
 ningshi-promo/
 ningshi-promo/**
 
@@ -20,6 +22,7 @@ clone-schedule.js
 inspect-and-clone.js
 **/fix-utf8.js
 **/fix_chinese.sql
+starway-deploy.tgz
 ningshi-deploy.tgz
 *.tgz
 
@@ -93,12 +96,12 @@ coverage/
 *.lcov
 
 # -----------------------------------------------------------------------------
-# 桌面端 Vite / Electron 构建产物（源码在 ningshi-pc/src 与 electron/）
-# 保留 ningshi-pc/build/ 中的图标资源
+# 桌面端 Vite / Electron 构建产物（源码在 starway-pc/src 与 electron/）
+# 保留 starway-pc/build/ 中的图标资源
 # -----------------------------------------------------------------------------
-ningshi-pc/dist/
-ningshi-pc/release/
-ningshi-pc/.vite/
+starway-pc/dist/
+starway-pc/release/
+starway-pc/.vite/
 dist/
 release/
 out/

@@ -1,7 +1,7 @@
 {
-  "name": "focusplan-backend",
+  "name": "starway-backend",
   "version": "1.0.0",
-  "description": "FocusPlan REST API - Express + MySQL",
+  "description": "Starway REST API - Express + MySQL",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -9,7 +9,7 @@
     "test": "jest --runInBand",
     "test:unit": "jest --runInBand tests/unit",
     "test:integration": "jest --runInBand tests/integration",
-    "docker:build": "docker build -t ningshi-api:latest .",
+    "docker:build": "docker build -t starway-api:latest .",
     "docker:up": "docker compose -f ../docker-compose.yml up -d --build",
     "docker:down": "docker compose -f ../docker-compose.yml down",
     "docker:logs": "docker compose -f ../docker-compose.yml logs -f api"

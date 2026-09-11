@@ -1,4 +1,4 @@
-# 凝时 API — 生产镜像
+# 星程 Starway API — 生产镜像
 FROM node:20-alpine
 
 WORKDIR /app

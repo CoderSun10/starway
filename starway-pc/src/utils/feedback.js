@@ -96,8 +96,8 @@ export async function playRingtone(ringtoneId = 'beep') {
 
 export async function showSystemNotification(title, body) {
   try {
-    if (window.ningshiDesktop?.showNotification) {
-      await window.ningshiDesktop.showNotification({ title, body });
+    if (window.starwayDesktop?.showNotification) {
+      await window.starwayDesktop.showNotification({ title, body });
       return true;
     }
   } catch {

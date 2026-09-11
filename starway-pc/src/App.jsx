@@ -19,8 +19,8 @@ function DesktopBridge() {
   const nav = useNavigate();
   useEffect(() => {
     useSettingsStore.getState().hydrateDesktop();
-    if (!window.ningshiDesktop?.onNavigate) return undefined;
-    return window.ningshiDesktop.onNavigate((route) => {
+    if (!window.starwayDesktop?.onNavigate) return undefined;
+    return window.starwayDesktop.onNavigate((route) => {
       if (route) nav(route);
     });
   }, [nav]);

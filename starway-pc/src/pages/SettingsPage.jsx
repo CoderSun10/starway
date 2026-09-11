@@ -47,9 +47,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     hydrateDesktop();
-    if (window.ningshiDesktop?.getInfo) {
+    if (window.starwayDesktop?.getInfo) {
       setIsElectron(true);
-      window.ningshiDesktop.getInfo().then((info) => {
+      window.starwayDesktop.getInfo().then((info) => {
         setPlatform(info.platform || 'electron');
       });
     }
@@ -241,7 +241,7 @@ export default function SettingsPage() {
           <br />
           运行平台：{platform}
           <br />
-          工程目录：ningshi-pc
+          工程目录：starway-pc
         </p>
       </Card>
     </div>

@@ -1,4 +1,4 @@
-# 凝时 · 一键启动：MySQL + API（全 Docker）
+# 星程 Starway · 一键启动：MySQL + API
 # 在仓库根目录：
 # 1) 复制 .env.example 为 .env 并填写密码
 # 2) docker compose up -d --build
@@ -7,7 +7,7 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: ${MYSQL_CONTAINER:-ningshi_mysql}
+    container_name: ${MYSQL_CONTAINER:-starway_mysql}
     restart: unless-stopped
     ports:
       - "${MYSQL_HOST_PORT:-3310}:3306"
@@ -41,14 +41,14 @@ services:
       retries: 15
       start_period: 30s
     networks:
-      - ningshi_net
+      - starway_net
 
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ningshi-api:latest
-    container_name: ${API_CONTAINER:-ningshi_api}
+    image: starway-api:latest
+    container_name: ${API_CONTAINER:-starway_api}
     restart: unless-stopped
     ports:
       - "3001:3001"
@@ -77,11 +77,11 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - ningshi_net
+      - starway_net
 
 volumes:
   focusplan_mysql_data:
 
 networks:
-  ningshi_net:
-    name: ningshi_net
+  starway_net:
+    name: starway_net

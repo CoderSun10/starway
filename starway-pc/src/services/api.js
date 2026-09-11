@@ -1,17 +1,14 @@
 import axios from 'axios';
+import { storageGet, storageSet } from '../utils/storage';
 
-const STORAGE_KEY = 'ningshi_pc_api_base';
+const STORAGE_KEY = 'starway_pc_api_base';
 const DEFAULT_API = (
   import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3001'
 ).replace(/\/$/, '');
 
 function loadBase() {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    if (v && /^https?:\/\//.test(v)) return v.replace(/\/$/, '');
-  } catch {
-    // ignore
-  }
+  const v = storageGet(STORAGE_KEY, 'ningshi_pc_api_base');
+  if (v && /^https?:\/\//.test(v)) return v.replace(/\/$/, '');
   return DEFAULT_API;
 }
 
@@ -24,7 +21,7 @@ export function getBaseURL() {
 export function setBaseURL(url) {
   baseURL = (url || DEFAULT_API).replace(/\/$/, '');
   try {
-    localStorage.setItem(STORAGE_KEY, baseURL);
+    storageSet(STORAGE_KEY, baseURL);
   } catch {
     // ignore
   }

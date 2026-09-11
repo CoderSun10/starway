@@ -6,7 +6,7 @@ const { listMigrationFiles } = require('../../src/migrate');
 describe('listMigrationFiles', () => {
   let dir;
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ningshi-mig-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'starway-mig-'));
     fs.mkdirSync(path.join(dir, 'down'));
     fs.writeFileSync(path.join(dir, '002_ledger_v1.sql'), 'SELECT 1;');
     fs.writeFileSync(path.join(dir, '002_x.down.sql'), 'DROP TABLE x;');

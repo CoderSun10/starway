@@ -40,7 +40,7 @@ export default function Layout() {
   const t = useTheme();
   const loc = useLocation();
   const framed =
-    typeof window !== 'undefined' && !!window.ningshiDesktop?.minimize;
+    typeof window !== 'undefined' && !!window.starwayDesktop?.minimize;
   const [open, setOpen] = useState({ time: false, money: false });
   const [maximized, setMaximized] = useState(false);
 
@@ -55,7 +55,7 @@ export default function Layout() {
   }, [activeGroup]);
 
   useEffect(() => {
-    const d = window.ningshiDesktop;
+    const d = window.starwayDesktop;
     if (!d?.isMaximized) return undefined;
     d.isMaximized().then(setMaximized).catch(() => {});
     return d.onMaximizedChange?.(setMaximized);
