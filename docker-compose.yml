@@ -20,7 +20,6 @@ services:
     volumes:
       - focusplan_mysql_data:/var/lib/mysql
       - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backend/sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci

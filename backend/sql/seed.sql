@@ -1,4 +1,4 @@
--- 可选示例数据（UTC 时间）
+-- 可选示例数据（UTC 时间）。仅本地演示用，不要挂到生产 initdb。
 -- 必须 SET NAMES：docker init 默认客户端可能是 latin1，否则中文会乱码
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET CHARACTER SET utf8mb4;

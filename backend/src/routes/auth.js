@@ -78,22 +78,6 @@ function asUtc(sqlDt) {
   return new Date(`${s.replace(' ', 'T')}Z`);
 }
 
-async function claimOrphanedData(uid) {
-  const rows = await query('SELECT COUNT(*) AS n FROM users');
-  if (Number(rows[0].n) !== 1) return;
-  await query('UPDATE schedules SET user_id = ? WHERE user_id IS NULL', [uid]);
-  await query('UPDATE pomodoro_sessions SET user_id = ? WHERE user_id IS NULL', [
-    uid,
-  ]);
-  await query('UPDATE budget_periods SET user_id = ? WHERE user_id IS NULL', [
-    uid,
-  ]);
-  await query('UPDATE expense_entries SET user_id = ? WHERE user_id IS NULL', [
-    uid,
-  ]);
-  await query('UPDATE app_settings SET user_id = ? WHERE user_id IS NULL', [uid]);
-}
-
 async function consumeCode(email, purpose, code) {
   const rows = await query(
     `SELECT * FROM email_codes
@@ -223,7 +207,6 @@ router.post(
       return rows[0];
     });
 
-    await claimOrphanedData(user.id);
     res.status(201).json({ success: true, message: '注册成功', ...issueSession(user) });
   })
 );

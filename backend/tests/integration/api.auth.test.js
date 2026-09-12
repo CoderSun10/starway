@@ -92,4 +92,21 @@ describe('认证：邮箱验证码注册 / 登录 / 数据隔离', () => {
     await deleteTestUser(a.id);
     await deleteTestUser(b.id);
   });
+
+  test('注册不会把无主演示数据划给新账号', async () => {
+    const [ins] = await pool.query(
+      `INSERT INTO schedules (title, description, start_at, end_at, planned_minutes)
+       VALUES ('无主演示计划', NULL, '2026-07-18 01:00:00', '2026-07-18 02:00:00', 60)`
+    );
+    const orphanId = ins.insertId;
+    const u = await createTestUser('no_claim');
+    createdEmails.push(u.email);
+
+    const list = await authed(app, u).get('/api/schedules');
+    expect(list.status).toBe(200);
+    expect((list.body.data || []).some((s) => s.id === orphanId)).toBe(false);
+
+    await pool.query('DELETE FROM schedules WHERE id = ?', [orphanId]).catch(() => {});
+    await deleteTestUser(u.id);
+  });
 });
