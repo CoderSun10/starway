@@ -26,6 +26,21 @@ async function main() {
     await conn.query('TRUNCATE TABLE budget_periods');
     await conn.query('SET FOREIGN_KEY_CHECKS=1');
 
+    const [users] = await conn.query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+    let uid;
+    if (!users.length) {
+      const { hashPassword } = require('../src/utils/password');
+      const hash = await hashPassword('demo123456');
+      const [ins] = await conn.query(
+        'INSERT INTO users (email, password_hash) VALUES (?, ?)',
+        ['demo@starway.local', hash]
+      );
+      uid = ins.insertId;
+      console.log('created demo user demo@starway.local / demo123456');
+    } else {
+      uid = users[0].id;
+    }
+
     const schedules = [
       {
         id: 1,
@@ -85,9 +100,9 @@ async function main() {
 
     for (const s of schedules) {
       await conn.query(
-        `INSERT INTO schedules (id, title, description, start_at, end_at, planned_minutes)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [s.id, s.title, s.description, s.start, s.end, s.minutes]
+        `INSERT INTO schedules (id, user_id, title, description, start_at, end_at, planned_minutes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [s.id, uid, s.title, s.description, s.start, s.end, s.minutes]
       );
       for (let i = 0; i < s.tasks.length; i += 1) {
         const [desc, mins, pct] = s.tasks[i];
@@ -187,9 +202,9 @@ async function main() {
     for (const row of sessions) {
       await conn.query(
         `INSERT INTO pomodoro_sessions
-          (schedule_id, task_id, content, started_at, ended_at, duration_minutes, planned_minutes, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        row
+          (user_id, schedule_id, task_id, content, started_at, ended_at, duration_minutes, planned_minutes, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uid, ...row]
       );
     }
 
@@ -202,9 +217,9 @@ async function main() {
     ];
     for (const b of budgets) {
       await conn.query(
-        `INSERT INTO budget_periods (id, title, description, start_date, end_date, planned_amount_fen)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        b
+        `INSERT INTO budget_periods (id, user_id, title, description, start_date, end_date, planned_amount_fen)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [b[0], uid, b[1], b[2], b[3], b[4], b[5]]
       );
     }
 
@@ -236,9 +251,9 @@ async function main() {
 
     for (const e of expenses) {
       await conn.query(
-        `INSERT INTO expense_entries (occurred_date, title, amount_fen, note)
-         VALUES (?, ?, ?, ?)`,
-        e
+        `INSERT INTO expense_entries (user_id, occurred_date, title, amount_fen, note)
+         VALUES (?, ?, ?, ?, ?)`,
+        [uid, ...e]
       );
     }
 

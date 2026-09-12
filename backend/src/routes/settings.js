@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -8,7 +9,11 @@ const router = express.Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await query('SELECT setting_key, setting_value FROM app_settings');
+    const uid = userId(req);
+    const rows = await query(
+      'SELECT setting_key, setting_value FROM app_settings WHERE user_id = ?',
+      [uid]
+    );
     const data = {};
     for (const r of rows) {
       data[r.setting_key] = r.setting_value;
@@ -24,6 +29,7 @@ router.get(
 router.put(
   '/',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const body = req.body || {};
     const allowed = ['timezone_mode'];
     for (const key of allowed) {
@@ -37,14 +43,17 @@ router.put(
           }
         }
         await query(
-          `INSERT INTO app_settings (setting_key, setting_value)
-           VALUES (?, ?)
+          `INSERT INTO app_settings (user_id, setting_key, setting_value)
+           VALUES (?, ?, ?)
            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-          [key, value]
+          [uid, key, value]
         );
       }
     }
-    const rows = await query('SELECT setting_key, setting_value FROM app_settings');
+    const rows = await query(
+      'SELECT setting_key, setting_value FROM app_settings WHERE user_id = ?',
+      [uid]
+    );
     const data = {};
     for (const r of rows) data[r.setting_key] = r.setting_value;
     res.json({ success: true, data });

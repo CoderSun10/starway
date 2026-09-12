@@ -2,50 +2,33 @@
  * 集成测试：真实打 API（需 MySQL + 后端已启动，或使用本文件内联 server）
  * 覆盖：跨天计划 CRUD、任务时长校验、会话统计归属日
  */
-const request = require('supertest');
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
-const schedulesRouter = require('../../src/routes/schedules');
-const sessionsRouter = require('../../src/routes/sessions');
-const statsRouter = require('../../src/routes/stats');
-const { errorHandler, notFound } = require('../../src/middleware/errorHandler');
 const { pool } = require('../../src/db');
+const {
+  createApp,
+  createTestUser,
+  authed,
+  deleteTestUser,
+} = require('../helpers/auth');
 const {
   durationMinutes,
   sessionStatDay,
   scheduleOverlapsShanghaiDay,
 } = require('../../src/utils/timeLogic');
 
-function createApp() {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-  app.use((req, res, next) => {
-    const old = res.json.bind(res);
-    res.json = (body) => {
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return old(body);
-    };
-    next();
-  });
-  app.use('/api/schedules', schedulesRouter);
-  app.use('/api/sessions', sessionsRouter);
-  app.use('/api/stats', statsRouter);
-  app.use(notFound);
-  app.use(errorHandler);
-  return app;
-}
-
 const app = createApp();
+let user;
+function req() {
+  return authed(app, user);
+}
 
 let createdScheduleId = null;
 let createdSessionIds = [];
 
 beforeAll(async () => {
-  // 确认 DB 可用
   await pool.query('SELECT 1');
+  user = await createTestUser('crossday');
 });
 
 afterAll(async () => {
@@ -56,6 +39,7 @@ afterAll(async () => {
   if (createdScheduleId) {
     await pool.query('DELETE FROM schedules WHERE id = ?', [createdScheduleId]).catch(() => {});
   }
+  await deleteTestUser(user?.id);
   await pool.end();
 });
 
@@ -70,7 +54,7 @@ describe('集成：跨天计划', () => {
   });
 
   test('创建跨天计划 + 任务时长校验', async () => {
-    const res = await request(app)
+    const res = await req()
       .post('/api/schedules')
       .send({
         title: '【测试】跨天攻坚',
@@ -95,7 +79,7 @@ describe('集成：跨天计划', () => {
   });
 
   test('任务时长不等于总工时 → 400', async () => {
-    const res = await request(app)
+    const res = await req()
       .post('/api/schedules')
       .send({
         title: '【测试】非法',
@@ -109,7 +93,7 @@ describe('集成：跨天计划', () => {
   });
 
   test('结束不晚于开始 → 400', async () => {
-    const res = await request(app)
+    const res = await req()
       .post('/api/schedules')
       .send({
         title: '【测试】非法时间',
@@ -125,7 +109,7 @@ describe('集成：跨天计划', () => {
     // dayStart/End for 北京 7/18
     const dayStart18 = '2026-07-17T16:00:00.000Z';
     const dayEnd18 = '2026-07-18T16:00:00.000Z';
-    const res18 = await request(app).get('/api/schedules').query({
+    const res18 = await req().get('/api/schedules').query({
       date: '2026-07-18',
       dayStartUtc: dayStart18,
       dayEndUtc: dayEnd18,
@@ -137,7 +121,7 @@ describe('集成：跨天计划', () => {
 
     const dayStart19 = '2026-07-18T16:00:00.000Z';
     const dayEnd19 = '2026-07-19T16:00:00.000Z';
-    const res19 = await request(app).get('/api/schedules').query({
+    const res19 = await req().get('/api/schedules').query({
       date: '2026-07-19',
       dayStartUtc: dayStart19,
       dayEndUtc: dayEnd19,
@@ -165,7 +149,7 @@ describe('集成：番茄会话统计归属（跨天）', () => {
     expect(durationMinutes(started, ended)).toBe(90);
     expect(sessionStatDay(started)).toBe('2026-07-18');
 
-    const res = await request(app)
+    const res = await req()
       .post('/api/sessions')
       .send({
         schedule_id: createdScheduleId,
@@ -181,7 +165,7 @@ describe('集成：番茄会话统计归属（跨天）', () => {
     createdSessionIds.push(res.body.data.id);
 
     // overview 按 7/18 应包含这 90 分钟
-    const ov18 = await request(app)
+    const ov18 = await req()
       .get('/api/stats/overview')
       .query({ today: '2026-07-18' });
     expect(ov18.status).toBe(200);
@@ -189,7 +173,7 @@ describe('集成：番茄会话统计归属（跨天）', () => {
 
     // daily 7/18 应有贡献；7/19 不应因「跨到凌晨」把同一会话再算一次
     // （实现：按 started_at 归属，只算 18 号）
-    const daily = await request(app)
+    const daily = await req()
       .get('/api/stats/daily')
       .query({ days: 3, today: '2026-07-19' });
     expect(daily.status).toBe(200);
@@ -202,15 +186,15 @@ describe('集成：番茄会话统计归属（跨天）', () => {
   });
 
   test('标准闭环：计划详情能读到会话累计', async () => {
-    const res = await request(app).get(`/api/schedules/${createdScheduleId}`);
+    const res = await req().get(`/api/schedules/${createdScheduleId}`);
     expect(res.status).toBe(200);
-    expect(Number(res.body.data.focused_minutes)).toBeGreaterThanOrEqual(90);
+    expect(Number(res.body.data.actual_focused_minutes)).toBeGreaterThanOrEqual(90);
   });
 });
 
 describe('集成：边界值', () => {
   test('1 分钟会话可创建', async () => {
-    const res = await request(app)
+    const res = await req()
       .post('/api/sessions')
       .send({
         content: '【测试】1分钟',
@@ -226,7 +210,7 @@ describe('集成：边界值', () => {
 
   test('health', async () => {
     // 直连 pool 已 ok；再测路由挂载
-    const res = await request(app).get('/api/stats/by-schedule');
+    const res = await req().get('/api/stats/by-schedule');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });

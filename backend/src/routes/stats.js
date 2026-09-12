@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { userId } = require('../middleware/auth');
 const {
   parseYmd,
   inclusiveDayCount,
@@ -26,12 +27,12 @@ function httpError(status, message, code) {
 router.get(
   '/overview',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const today = req.query.today; // 客户端时区下的今天 YYYY-MM-DD
     // 若未传，用上海时区今天
     const todayExpr = today
       ? '?'
       : 'DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))';
-    const params = today ? [today, today, today] : [];
 
     // 今日
     const todayRows = await query(
@@ -39,9 +40,9 @@ router.get(
          COALESCE(SUM(duration_minutes), 0) AS total_minutes,
          COUNT(*) AS pomodoro_count
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00")) = ${todayExpr}`,
-      today ? [today] : []
+      today ? [uid, today] : [uid]
     );
 
     // 本周（周一至今天，上海）
@@ -50,7 +51,7 @@ router.get(
          COALESCE(SUM(duration_minutes), 0) AS total_minutes,
          COUNT(*) AS pomodoro_count
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00"))
              >= DATE_SUB(${todayExpr}, INTERVAL WEEKDAY(CONVERT_TZ(
                   ${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'UTC_TIMESTAMP()'},
@@ -58,7 +59,7 @@ router.get(
                   "+08:00"
                 )) DAY)
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00")) <= ${todayExpr}`,
-      today ? [today, today, today] : []
+      today ? [uid, today, today, today] : [uid]
     );
 
     // 本月
@@ -67,27 +68,27 @@ router.get(
          COALESCE(SUM(duration_minutes), 0) AS total_minutes,
          COUNT(*) AS pomodoro_count
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE_FORMAT(CONVERT_TZ(started_at, "+00:00", "+08:00"), "%Y-%m")
              = DATE_FORMAT(${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")'}, "%Y-%m")`,
-      today ? [today] : []
+      today ? [uid, today] : [uid]
     );
 
     // 昨日对比
     const yesterdayRows = await query(
       `SELECT COALESCE(SUM(duration_minutes), 0) AS total_minutes
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00"))
              = DATE_SUB(${todayExpr}, INTERVAL 1 DAY)`,
-      today ? [today] : []
+      today ? [uid, today] : [uid]
     );
 
     // 上周同区间粗对比：上周一到上周日
     const lastWeekRows = await query(
       `SELECT COALESCE(SUM(duration_minutes), 0) AS total_minutes
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00"))
              BETWEEN DATE_SUB(${todayExpr}, INTERVAL (WEEKDAY(
                ${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")'}
@@ -95,46 +96,46 @@ router.get(
              AND DATE_SUB(${todayExpr}, INTERVAL (WEEKDAY(
                ${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")'}
              ) + 1) DAY)`,
-      today ? [today, today, today, today] : []
+      today ? [uid, today, today, today, today] : [uid]
     );
 
     const spendTodayExpr = today ? '?' : `DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))`;
     const spendTodayRows = await query(
       `SELECT COALESCE(SUM(amount_fen), 0) AS total_fen
        FROM expense_entries
-       WHERE occurred_date = ${spendTodayExpr}`,
-      today ? [today] : []
+       WHERE user_id = ? AND occurred_date = ${spendTodayExpr}`,
+      today ? [uid, today] : [uid]
     );
     const spendWeekRows = await query(
       `SELECT COALESCE(SUM(amount_fen), 0) AS total_fen
        FROM expense_entries
-       WHERE occurred_date >= DATE_SUB(${spendTodayExpr}, INTERVAL WEEKDAY(STR_TO_DATE(${
+       WHERE user_id = ? AND occurred_date >= DATE_SUB(${spendTodayExpr}, INTERVAL WEEKDAY(STR_TO_DATE(${
          today ? '?' : 'DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"), "%Y-%m-%d")'
        }, '%Y-%m-%d')) DAY)
          AND occurred_date <= ${spendTodayExpr}`,
-      today ? [today, today, today] : []
+      today ? [uid, today, today, today] : [uid]
     );
     const spendMonthRows = await query(
       `SELECT COALESCE(SUM(amount_fen), 0) AS total_fen
        FROM expense_entries
-       WHERE DATE_FORMAT(occurred_date, "%Y-%m")
+       WHERE user_id = ? AND DATE_FORMAT(occurred_date, "%Y-%m")
              = DATE_FORMAT(${
                today
                  ? 'STR_TO_DATE(?, "%Y-%m-%d")'
                  : 'CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")'
              }, "%Y-%m")`,
-      today ? [today] : []
+      today ? [uid, today] : [uid]
     );
     const spendYesterdayRows = await query(
       `SELECT COALESCE(SUM(amount_fen), 0) AS total_fen
        FROM expense_entries
-       WHERE occurred_date = DATE_SUB(${spendTodayExpr}, INTERVAL 1 DAY)`,
-      today ? [today] : []
+       WHERE user_id = ? AND occurred_date = DATE_SUB(${spendTodayExpr}, INTERVAL 1 DAY)`,
+      today ? [uid, today] : [uid]
     );
     const spendLastWeekRows = await query(
       `SELECT COALESCE(SUM(amount_fen), 0) AS total_fen
        FROM expense_entries
-       WHERE occurred_date BETWEEN DATE_SUB(${spendTodayExpr}, INTERVAL (WEEKDAY(
+       WHERE user_id = ? AND occurred_date BETWEEN DATE_SUB(${spendTodayExpr}, INTERVAL (WEEKDAY(
                STR_TO_DATE(${
                  today ? '?' : 'DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"), "%Y-%m-%d")'
                }, '%Y-%m-%d')
@@ -144,7 +145,7 @@ router.get(
                  today ? '?' : 'DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"), "%Y-%m-%d")'
                }, '%Y-%m-%d')
              ) + 1) DAY)`,
-      today ? [today, today, today, today] : []
+      today ? [uid, today, today, today, today] : [uid]
     );
 
     res.json({
@@ -172,6 +173,7 @@ router.get(
 router.get(
   '/daily',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
     const today = req.query.today; // YYYY-MM-DD 上海/本地今天
 
@@ -182,14 +184,14 @@ router.get(
          COALESCE(SUM(duration_minutes), 0) AS total_minutes,
          COUNT(*) AS pomodoro_count
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00"))
              >= DATE_SUB(${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))'}, INTERVAL ? DAY)
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00"))
              <= ${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))'}
        GROUP BY day
        ORDER BY day ASC`,
-      today ? [today, days - 1, today] : [days - 1]
+      today ? [uid, today, days - 1, today] : [uid, days - 1]
     );
 
     // 补全缺失日期
@@ -198,12 +200,12 @@ router.get(
               COALESCE(SUM(amount_fen), 0) AS spend_fen,
               COUNT(*) AS expense_count
        FROM expense_entries
-       WHERE occurred_date
+       WHERE user_id = ? AND occurred_date
              >= DATE_SUB(${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))'}, INTERVAL ? DAY)
          AND occurred_date
              <= ${today ? 'STR_TO_DATE(?, "%Y-%m-%d")' : 'DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))'}
        GROUP BY occurred_date`,
-      today ? [today, days - 1, today] : [days - 1]
+      today ? [uid, today, days - 1, today] : [uid, days - 1]
     );
 
     const map = {};
@@ -264,6 +266,7 @@ router.get(
 router.get(
   '/day-summary',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const from = parseYmd(req.query.from);
     const to = parseYmd(req.query.to);
     const span = from && to ? inclusiveDayCount(from, to) : null;
@@ -276,20 +279,20 @@ router.get(
               COALESCE(SUM(duration_minutes), 0) AS focus_minutes,
               COUNT(*) AS session_count
        FROM pomodoro_sessions
-       WHERE status = 'completed'
+       WHERE user_id = ? AND status = 'completed'
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00")) >= ?
          AND DATE(CONVERT_TZ(started_at, "+00:00", "+08:00")) <= ?
        GROUP BY day`,
-      [from, to]
+      [uid, from, to]
     );
     const spendRows = await query(
       `SELECT occurred_date AS day,
               COALESCE(SUM(amount_fen), 0) AS spend_fen,
               COUNT(*) AS expense_count
        FROM expense_entries
-       WHERE occurred_date >= ? AND occurred_date <= ?
+       WHERE user_id = ? AND occurred_date >= ? AND occurred_date <= ?
        GROUP BY occurred_date`,
-      [from, to]
+      [uid, from, to]
     );
 
     const map = {};
@@ -327,6 +330,7 @@ router.get(
 router.get(
   '/by-schedule',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
     const today = req.query.today; // YYYY-MM-DD
 
@@ -337,7 +341,7 @@ router.get(
              <= STR_TO_DATE(?, "%Y-%m-%d")`
       : `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
              >= DATE_SUB(DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")), INTERVAL ? DAY)`;
-    const params = today ? [today, days - 1, today] : [days - 1];
+    const params = today ? [uid, today, days - 1, today] : [uid, days - 1];
 
     const rows = await query(
       `SELECT
@@ -347,7 +351,7 @@ router.get(
          COUNT(*) AS session_count
        FROM pomodoro_sessions s
        LEFT JOIN schedules sc ON sc.id = s.schedule_id
-       WHERE s.status = 'completed' AND s.schedule_id IS NOT NULL
+       WHERE s.user_id = ? AND s.status = 'completed' AND s.schedule_id IS NOT NULL
          ${dayFilter}
        GROUP BY s.schedule_id, sc.title
        ORDER BY total_minutes DESC`,
@@ -369,6 +373,7 @@ router.get(
 router.get(
   '/by-task',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const { schedule_id } = req.query;
     let sql = `
       SELECT
@@ -379,9 +384,9 @@ router.get(
         COUNT(*) AS session_count
       FROM pomodoro_sessions s
       LEFT JOIN tasks t ON t.id = s.task_id
-      WHERE s.status = 'completed' AND s.task_id IS NOT NULL
+      WHERE s.user_id = ? AND s.status = 'completed' AND s.task_id IS NOT NULL
     `;
-    const params = [];
+    const params = [uid];
     if (schedule_id) {
       sql += ' AND s.schedule_id = ?';
       params.push(schedule_id);
@@ -405,8 +410,12 @@ router.get(
 router.get(
   '/schedule/:id',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const id = req.params.id;
-    const schedules = await query('SELECT * FROM schedules WHERE id = ?', [id]);
+    const schedules = await query(
+      'SELECT * FROM schedules WHERE id = ? AND user_id = ?',
+      [id, uid]
+    );
     if (!schedules.length) {
       const err = new Error('计划不存在');
       err.status = 404;
@@ -424,8 +433,8 @@ router.get(
          COALESCE(SUM(duration_minutes), 0) AS actual_focused_minutes,
          COUNT(*) AS session_count
        FROM pomodoro_sessions
-       WHERE schedule_id = ? AND status = 'completed'`,
-      [id]
+       WHERE user_id = ? AND schedule_id = ? AND status = 'completed'`,
+      [uid, id]
     );
 
     // 计划进度基于任务 completed_percent 平均

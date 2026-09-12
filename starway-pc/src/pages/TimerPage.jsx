@@ -134,9 +134,9 @@ export default function TimerPage() {
             />
           </div>
           <p className="muted" style={{ color: t.muted, marginTop: 16, lineHeight: 1.6 }}>
-            提示：结束后可关联计划或自由记录。后端默认
-            <code style={{ marginLeft: 4 }}>http://127.0.0.1:3001</code>
-            ，可在设置中修改。
+            提示：结束后可关联计划或自由记录。当前后端
+            <code style={{ marginLeft: 4 }}>http://49.234.199.55:3001</code>
+            。
           </p>
         </Card>
       </div>

@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { parseYmd } = require('../utils/timeLogic');
 const { parseAmountFen } = require('../utils/money');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -57,8 +58,9 @@ router.get(
     if ((from && !to) || (!from && to)) {
       throw httpError(400, 'from 与 to 必须同时提供', 'INCOMPLETE_RANGE');
     }
-    let sql = 'SELECT * FROM expense_entries WHERE 1=1';
-    const params = [];
+    const uid = userId(req);
+    let sql = 'SELECT * FROM expense_entries WHERE user_id = ?';
+    const params = [uid];
     if (date) {
       sql += ' AND occurred_date = ?';
       params.push(requireYmd(date, 'date'));
@@ -77,9 +79,10 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const rows = await query('SELECT * FROM expense_entries WHERE id = ?', [
-      req.params.id,
-    ]);
+    const rows = await query(
+      'SELECT * FROM expense_entries WHERE id = ? AND user_id = ?',
+      [req.params.id, userId(req)]
+    );
     if (!rows.length) throw httpError(404, '支出不存在', 'EXPENSE_NOT_FOUND');
     res.json({ success: true, data: shape(rows[0]) });
   })
@@ -88,15 +91,17 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const body = parseExpenseBody(req.body || {});
     const result = await query(
-      `INSERT INTO expense_entries (occurred_date, title, amount_fen, note)
-       VALUES (?, ?, ?, ?)`,
-      [body.occurred_date, body.title, body.amount_fen, body.note]
+      `INSERT INTO expense_entries (user_id, occurred_date, title, amount_fen, note)
+       VALUES (?, ?, ?, ?, ?)`,
+      [uid, body.occurred_date, body.title, body.amount_fen, body.note]
     );
-    const rows = await query('SELECT * FROM expense_entries WHERE id = ?', [
-      result.insertId,
-    ]);
+    const rows = await query(
+      'SELECT * FROM expense_entries WHERE id = ? AND user_id = ?',
+      [result.insertId, uid]
+    );
     res.status(201).json({ success: true, data: shape(rows[0]) });
   })
 );
@@ -104,20 +109,23 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = await query('SELECT id FROM expense_entries WHERE id = ?', [
-      req.params.id,
-    ]);
+    const uid = userId(req);
+    const existing = await query(
+      'SELECT id FROM expense_entries WHERE id = ? AND user_id = ?',
+      [req.params.id, uid]
+    );
     if (!existing.length) throw httpError(404, '支出不存在', 'EXPENSE_NOT_FOUND');
     const body = parseExpenseBody(req.body || {});
     await query(
       `UPDATE expense_entries
        SET occurred_date = ?, title = ?, amount_fen = ?, note = ?
-       WHERE id = ?`,
-      [body.occurred_date, body.title, body.amount_fen, body.note, req.params.id]
+       WHERE id = ? AND user_id = ?`,
+      [body.occurred_date, body.title, body.amount_fen, body.note, req.params.id, uid]
     );
-    const rows = await query('SELECT * FROM expense_entries WHERE id = ?', [
-      req.params.id,
-    ]);
+    const rows = await query(
+      'SELECT * FROM expense_entries WHERE id = ? AND user_id = ?',
+      [req.params.id, uid]
+    );
     res.json({ success: true, data: shape(rows[0]) });
   })
 );
@@ -125,11 +133,15 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = await query('SELECT id FROM expense_entries WHERE id = ?', [
-      req.params.id,
-    ]);
+    const existing = await query(
+      'SELECT id FROM expense_entries WHERE id = ? AND user_id = ?',
+      [req.params.id, userId(req)]
+    );
     if (!existing.length) throw httpError(404, '支出不存在', 'EXPENSE_NOT_FOUND');
-    await query('DELETE FROM expense_entries WHERE id = ?', [req.params.id]);
+    await query('DELETE FROM expense_entries WHERE id = ? AND user_id = ?', [
+      req.params.id,
+      userId(req),
+    ]);
     res.json({ success: true, data: { id: Number(req.params.id) } });
   })
 );

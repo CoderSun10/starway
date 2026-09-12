@@ -1,6 +1,6 @@
 {
   "name": "starway-pc",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "星程 Starway 桌面端 (Windows / Linux)",
   "homepage": "https://github.com/CoderSun10/starway",
   "main": "electron/main.cjs",

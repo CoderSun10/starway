@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { parseYmd, inclusiveDayCount, eachUtcDate } = require('../utils/timeLogic');
 const { parseAmountFen } = require('../utils/money');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -65,7 +66,7 @@ function shapePeriod(row) {
   };
 }
 
-async function attachSpent(ids) {
+async function attachSpent(ids, uid) {
   if (!ids.length) return {};
   const placeholders = ids.map(() => '?').join(',');
   const rows = await query(
@@ -74,10 +75,11 @@ async function attachSpent(ids) {
             COUNT(e.id) AS expense_count
      FROM budget_periods p2
      LEFT JOIN expense_entries e
-       ON e.occurred_date BETWEEN p2.start_date AND p2.end_date
-     WHERE p2.id IN (${placeholders})
+       ON e.user_id = p2.user_id
+      AND e.occurred_date BETWEEN p2.start_date AND p2.end_date
+     WHERE p2.user_id = ? AND p2.id IN (${placeholders})
      GROUP BY p2.id`,
-    ids
+    [uid, ...ids]
   );
   const map = {};
   for (const r of rows) {
@@ -96,8 +98,9 @@ router.get(
     if ((from && !to) || (!from && to)) {
       throw httpError(400, 'from 与 to 必须同时提供', 'INCOMPLETE_RANGE');
     }
-    let sql = 'SELECT * FROM budget_periods WHERE 1=1';
-    const params = [];
+    const uid = userId(req);
+    let sql = 'SELECT * FROM budget_periods WHERE user_id = ?';
+    const params = [uid];
     if (date) {
       const d = requireYmd(date, 'date');
       sql += ' AND start_date <= ? AND end_date >= ?';
@@ -116,7 +119,7 @@ router.get(
     sql += ' ORDER BY start_date DESC, id DESC';
     const rows = await query(sql, params);
     const ids = rows.map((r) => r.id);
-    const spentMap = await attachSpent(ids);
+    const spentMap = await attachSpent(ids, uid);
     res.json({
       success: true,
       data: rows.map((r) =>
@@ -129,11 +132,13 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const rows = await query('SELECT * FROM budget_periods WHERE id = ?', [
-      req.params.id,
-    ]);
+    const uid = userId(req);
+    const rows = await query(
+      'SELECT * FROM budget_periods WHERE id = ? AND user_id = ?',
+      [req.params.id, uid]
+    );
     if (!rows.length) throw httpError(404, '预算时段不存在', 'BUDGET_NOT_FOUND');
-    const spentMap = await attachSpent([rows[0].id]);
+    const spentMap = await attachSpent([rows[0].id], uid);
     const base = shapePeriod({
       ...rows[0],
       ...(spentMap[Number(rows[0].id)] || { spent_fen: 0, expense_count: 0 }),
@@ -143,9 +148,9 @@ router.get(
               COALESCE(SUM(amount_fen), 0) AS spend_fen,
               COUNT(*) AS expense_count
        FROM expense_entries
-       WHERE occurred_date BETWEEN ? AND ?
+       WHERE user_id = ? AND occurred_date BETWEEN ? AND ?
        GROUP BY occurred_date`,
-      [base.start_date, base.end_date]
+      [uid, base.start_date, base.end_date]
     );
     const map = {};
     for (const r of dailyRows) {
@@ -166,12 +171,14 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    const uid = userId(req);
     const body = parsePeriodBody(req.body || {});
     const result = await query(
       `INSERT INTO budget_periods
-        (title, description, start_date, end_date, planned_amount_fen)
-       VALUES (?, ?, ?, ?, ?)`,
+        (user_id, title, description, start_date, end_date, planned_amount_fen)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
+        uid,
         body.title,
         body.description,
         body.start_date,
@@ -192,15 +199,17 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = await query('SELECT id FROM budget_periods WHERE id = ?', [
-      req.params.id,
-    ]);
+    const uid = userId(req);
+    const existing = await query(
+      'SELECT id FROM budget_periods WHERE id = ? AND user_id = ?',
+      [req.params.id, uid]
+    );
     if (!existing.length) throw httpError(404, '预算时段不存在', 'BUDGET_NOT_FOUND');
     const body = parsePeriodBody(req.body || {});
     await query(
       `UPDATE budget_periods
        SET title = ?, description = ?, start_date = ?, end_date = ?, planned_amount_fen = ?
-       WHERE id = ?`,
+       WHERE id = ? AND user_id = ?`,
       [
         body.title,
         body.description,
@@ -208,12 +217,14 @@ router.put(
         body.end_date,
         body.planned_amount_fen,
         req.params.id,
+        uid,
       ]
     );
-    const rows = await query('SELECT * FROM budget_periods WHERE id = ?', [
-      req.params.id,
-    ]);
-    const spentMap = await attachSpent([rows[0].id]);
+    const rows = await query(
+      'SELECT * FROM budget_periods WHERE id = ? AND user_id = ?',
+      [req.params.id, uid]
+    );
+    const spentMap = await attachSpent([rows[0].id], uid);
     res.json({
       success: true,
       data: shapePeriod({
@@ -227,11 +238,15 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = await query('SELECT id FROM budget_periods WHERE id = ?', [
-      req.params.id,
-    ]);
+    const existing = await query(
+      'SELECT id FROM budget_periods WHERE id = ? AND user_id = ?',
+      [req.params.id, userId(req)]
+    );
     if (!existing.length) throw httpError(404, '预算时段不存在', 'BUDGET_NOT_FOUND');
-    await query('DELETE FROM budget_periods WHERE id = ?', [req.params.id]);
+    await query('DELETE FROM budget_periods WHERE id = ? AND user_id = ?', [
+      req.params.id,
+      userId(req),
+    ]);
     res.json({ success: true, data: { id: Number(req.params.id) } });
   })
 );

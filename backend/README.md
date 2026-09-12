@@ -26,7 +26,9 @@ docker compose logs -f api
 | `schedules` | 计划：标题、描述、开始/结束时间(UTC)、预计总工时(分钟) |
 | `tasks` | 任务：归属计划、描述、预计时长、排序 |
 | `pomodoro_sessions` | 番茄会话：开始/结束(UTC)、时长、关联计划/任务、自由内容 |
-| `app_settings` | 客户端设置（如时区模式） |
+| `users` | 账号：邮箱、密码哈希 |
+| `email_codes` | 注册 / 重置密码验证码 |
+| `app_settings` | 客户端设置（如时区模式），按账号隔离 |
 
 详细字段见 `sql/schema.sql`。
 
@@ -54,9 +56,17 @@ npm run dev
 | DB_USER | root | 用户 |
 | DB_PASSWORD | （必填，见 `.env`） | 密码 |
 | DB_NAME | focusplan | 库名 |
+| JWT_SECRET | （必填） | 登录令牌密钥 |
+| EMAIL_HOST | smtp.qq.com | 发验证码 SMTP |
+| EMAIL_USER / EMAIL_PASS | | QQ 邮箱与授权码 |
+| AUTH_DEV_ECHO_CODE | | 设为 `1` 时接口回显验证码（仅本地） |
 
 ## 主要 API
 
+- `POST /api/auth/send-code` — 发送邮箱验证码（`purpose=register|reset`）
+- `POST /api/auth/register` — 邮箱 + 密码 + 验证码注册
+- `POST /api/auth/login` — 登录
+- `GET /api/auth/me` — 当前用户
 - `GET/POST /api/schedules` — 计划列表 / 创建（含任务，校验时长之和）
 - `GET/PUT/DELETE /api/schedules/:id`
 - `GET/PATCH/DELETE /api/tasks`

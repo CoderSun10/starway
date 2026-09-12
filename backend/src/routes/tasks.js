@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -16,13 +17,16 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { schedule_id } = req.query;
-    let sql = 'SELECT * FROM tasks WHERE 1=1';
-    const params = [];
+    const uid = userId(req);
+    let sql = `SELECT t.* FROM tasks t
+      INNER JOIN schedules s ON s.id = t.schedule_id
+      WHERE s.user_id = ?`;
+    const params = [uid];
     if (schedule_id) {
-      sql += ' AND schedule_id = ?';
+      sql += ' AND t.schedule_id = ?';
       params.push(schedule_id);
     }
-    sql += ' ORDER BY sort_order ASC, id ASC';
+    sql += ' ORDER BY t.sort_order ASC, t.id ASC';
     const rows = await query(sql, params);
     res.json({
       success: true,
@@ -37,7 +41,13 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { description, planned_minutes, sort_order, completed_percent } =
       req.body || {};
-    const rows = await query('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const uid = userId(req);
+    const rows = await query(
+      `SELECT t.* FROM tasks t
+       INNER JOIN schedules s ON s.id = t.schedule_id
+       WHERE t.id = ? AND s.user_id = ?`,
+      [req.params.id, uid]
+    );
     if (!rows.length) throw httpError(404, '任务不存在', 'TASK_NOT_FOUND');
 
     const next = {
@@ -78,7 +88,12 @@ router.patch(
         req.params.id,
       ]
     );
-    const updated = await query('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const updated = await query(
+      `SELECT t.* FROM tasks t
+       INNER JOIN schedules s ON s.id = t.schedule_id
+       WHERE t.id = ? AND s.user_id = ?`,
+      [req.params.id, uid]
+    );
     res.json({
       success: true,
       data: {
@@ -94,7 +109,12 @@ router.patch(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const result = await query('DELETE FROM tasks WHERE id = ?', [req.params.id]);
+    const result = await query(
+      `DELETE t FROM tasks t
+       INNER JOIN schedules s ON s.id = t.schedule_id
+       WHERE t.id = ? AND s.user_id = ?`,
+      [req.params.id, userId(req)]
+    );
     if (result.affectedRows === 0) throw httpError(404, '任务不存在', 'TASK_NOT_FOUND');
     res.json({ success: true, message: '已删除' });
   })

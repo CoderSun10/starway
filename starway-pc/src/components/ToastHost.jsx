@@ -9,7 +9,7 @@ export default function ToastHost() {
       {items.map((t) => (
         <div
           key={t.id}
-          className={`toast ${t.type}`}
+          className={`toast ${t.type}${t.leaving ? ' out' : ''}`}
           onClick={() => dismiss(t.id)}
           role="status"
         >

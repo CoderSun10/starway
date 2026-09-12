@@ -8,9 +8,14 @@ export const useToastStore = create((set, get) => ({
   show(type, text1, text2 = '') {
     const id = ++seq;
     set((s) => ({
-      items: [...s.items, { id, type, text1, text2 }],
+      items: [...s.items, { id, type, text1, text2, leaving: false }],
     }));
-    setTimeout(() => get().dismiss(id), 3200);
+    setTimeout(() => {
+      set((s) => ({
+        items: s.items.map((x) => (x.id === id ? { ...x, leaving: true } : x)),
+      }));
+    }, 2600);
+    setTimeout(() => get().dismiss(id), 3000);
   },
 
   dismiss(id) {

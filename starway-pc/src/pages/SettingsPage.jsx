@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTheme, useThemeStore } from '../stores/themeStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { THEME_LIST } from '../constants/themes';
-import { getBaseURL, healthCheck, setBaseURL } from '../services/api';
+import { THEME_LIST, themes } from '../constants/themes';
+import { changePassword } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 import { APP_NAME_FULL, APP_SLOGAN } from '../constants/brand';
 import {
   FEEDBACK_MODES,
@@ -11,14 +13,40 @@ import {
 } from '../utils/feedback';
 import {
   Button,
-  Card,
   Chip,
   Field,
-  PageHeader,
   NumericInput,
   TextInput,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
+
+const NAV = [
+  { id: 'account', label: '账号', hint: '登录与密码' },
+  { id: 'appearance', label: '外观', hint: '主题配色' },
+  { id: 'calendar', label: '日历', hint: '热力图' },
+  { id: 'alerts', label: '提醒', hint: '计时结束' },
+  { id: 'window', label: '窗口', hint: '托盘与开机' },
+  { id: 'about', label: '关于', hint: '版本信息' },
+];
+
+function Row({ title, hint, children, danger }) {
+  const t = useTheme();
+  return (
+    <div className="settings-row" style={{ borderColor: t.border }}>
+      <div className="settings-row-copy">
+        <div style={{ color: danger ? t.danger : t.text, fontWeight: 600 }}>
+          {title}
+        </div>
+        {hint ? (
+          <div className="settings-row-hint" style={{ color: t.textSecondary }}>
+            {hint}
+          </div>
+        ) : null}
+      </div>
+      <div className="settings-row-action">{children}</div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const t = useTheme();
@@ -39,11 +67,18 @@ export default function SettingsPage() {
   const setHeatmapSpendYuan = useSettingsStore((s) => s.setHeatmapSpendYuan);
   const hydrateDesktop = useSettingsStore((s) => s.hydrateDesktop);
 
-  const [url, setUrl] = useState(getBaseURL());
-  const [testing, setTesting] = useState(false);
+  const nav = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const clearAuth = useAuthStore((s) => s.clear);
+  const [section, setSection] = useState('account');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [savingPw, setSavingPw] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [platform, setPlatform] = useState('web');
   const [isElectron, setIsElectron] = useState(false);
+
+  const current = NAV.find((n) => n.id === section) || NAV[0];
 
   useEffect(() => {
     hydrateDesktop();
@@ -54,30 +89,6 @@ export default function SettingsPage() {
       });
     }
   }, [hydrateDesktop]);
-
-  const onSave = () => {
-    const v = url.trim().replace(/\/$/, '');
-    if (!/^https?:\/\//.test(v)) {
-      toast.error('请输入合法 http(s) 地址');
-      return;
-    }
-    setBaseURL(v);
-    setUrl(v);
-    toast.success('API 地址已保存');
-  };
-
-  const onTest = async () => {
-    setTesting(true);
-    try {
-      setBaseURL(url.trim().replace(/\/$/, ''));
-      const res = await healthCheck();
-      toast.success('连接成功', res.message || 'API OK');
-    } catch (e) {
-      toast.error('连接失败', e.message);
-    } finally {
-      setTesting(false);
-    }
-  };
 
   const onPreview = async () => {
     if (previewing) return;
@@ -96,154 +107,281 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <div className="stack">
-      <PageHeader title="设置" sub="主题、日历热力、提醒、托盘与后端" />
-
-      <Card>
-        <h3 style={{ margin: '0 0 12px', color: t.text }}>主题</h3>
-        <div className="chip-row">
-          {THEME_LIST.map((item) => (
-            <Chip
-              key={item.id}
-              active={themeId === item.id}
-              onClick={() => setThemeId(item.id)}
-            >
-              {item.name}
-            </Chip>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
-        <h3 style={{ margin: '0 0 8px', color: t.text }}>日历热力图阈值</h3>
-        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
-          打开日历 → 点「热力图」后，格子颜色深浅按当天数值相对下面满格值计算。
-        </p>
-        <Field label="时间满格（分钟）">
-          <NumericInput
-            min={15}
-            max={600}
-            value={heatmapTimeMax ?? 120}
-            onCommit={setHeatmapTimeMax}
-            style={{ maxWidth: 200 }}
-          />
-        </Field>
-        <Field label="花费满格（元）">
-          <NumericInput
-            min={1}
-            max={100000}
-            value={heatmapSpendYuan ?? 100}
-            onCommit={setHeatmapSpendYuan}
-            style={{ maxWidth: 200 }}
-          />
-        </Field>
-      </Card>
-
-      <Card>
-        <h3 style={{ margin: '0 0 8px', color: t.text }}>结束提醒</h3>
-        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
-          计时结束时播放本地合成提示音，并可选系统通知（不依赖外网）
-        </p>
-        <div className="label" style={{ color: t.textSecondary }}>
-          提醒方式
-        </div>
-        <div className="chip-row" style={{ marginBottom: 12 }}>
-          {FEEDBACK_MODES.map((m) => (
-            <Chip
-              key={m.id}
-              active={feedbackMode === m.id}
-              onClick={() => setFeedbackMode(m.id)}
-            >
-              {m.label}
-            </Chip>
-          ))}
-        </div>
-        {(feedbackMode === 'both' || feedbackMode === 'sound') && (
-          <>
-            <div className="label" style={{ color: t.textSecondary }}>
-              铃声
+  const pane = (() => {
+    if (section === 'account') {
+      return (
+        <>
+          <Row title="当前账号" hint="登录用的邮箱">
+            <span style={{ color: t.text }}>{user?.email || '未登录'}</span>
+          </Row>
+          <div className="settings-block">
+            <div className="settings-block-title" style={{ color: t.textSecondary }}>
+              修改密码
             </div>
-            <div className="chip-row" style={{ marginBottom: 12 }}>
-              {RINGTONE_PRESETS.map((r) => (
-                <Chip
-                  key={r.id}
-                  active={ringtoneId === r.id}
-                  onClick={() => setRingtoneId(r.id)}
+            <Field label="当前密码">
+              <TextInput
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </Field>
+            <Field label="新密码">
+              <TextInput
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                placeholder="至少 8 位"
+              />
+            </Field>
+            <Button
+              variant="outline"
+              disabled={savingPw}
+              onClick={async () => {
+                setSavingPw(true);
+                try {
+                  await changePassword({ currentPassword, newPassword });
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  toast.success('密码已修改');
+                } catch (e) {
+                  toast.error(e.message || '修改失败');
+                } finally {
+                  setSavingPw(false);
+                }
+              }}
+            >
+              {savingPw ? '保存中…' : '保存新密码'}
+            </Button>
+          </div>
+          <Row title="退出登录" hint="不会删除云端数据" danger>
+            <Button
+              variant="danger"
+              onClick={() => {
+                clearAuth();
+                toast.info('已退出登录');
+                nav('/login', { replace: true });
+              }}
+            >
+              退出
+            </Button>
+          </Row>
+        </>
+      );
+    }
+
+    if (section === 'appearance') {
+      return (
+        <div className="theme-grid">
+          {THEME_LIST.map((item) => {
+            const th = themes[item.id];
+            const on = themeId === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`theme-tile${on ? ' on' : ''}`}
+                onClick={() => setThemeId(item.id)}
+                style={{
+                  borderColor: on ? t.primary : t.border,
+                  background: t.bgElevated,
+                  color: t.text,
+                  boxShadow: on ? `0 0 0 3px ${t.primarySoft}` : 'none',
+                }}
+              >
+                <span
+                  className="theme-swatch"
+                  style={{ background: th.bg, borderColor: th.border }}
                 >
-                  {r.label}
+                  <i style={{ background: th.sidebar }} />
+                  <i style={{ background: th.primary }} />
+                  <i style={{ background: th.accent }} />
+                </span>
+                <strong>{item.name}</strong>
+                {on ? (
+                  <span className="theme-on" style={{ color: t.primary }}>
+                    使用中
+                  </span>
+                ) : (
+                  <span className="theme-on" style={{ color: t.muted }}>
+                    点击应用
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (section === 'calendar') {
+      return (
+        <>
+          <p className="settings-lead" style={{ color: t.textSecondary }}>
+            日历切到「热力图」后，格子深浅按当天数值相对满格值计算。
+          </p>
+          <Row title="时间满格" hint="当天专注达到这个分钟数即为最深色">
+            <NumericInput
+              min={15}
+              max={600}
+              value={heatmapTimeMax ?? 120}
+              onCommit={setHeatmapTimeMax}
+              style={{ width: 120 }}
+            />
+          </Row>
+          <Row title="花费满格" hint="当天支出达到这个金额（元）即为最深色">
+            <NumericInput
+              min={1}
+              max={100000}
+              value={heatmapSpendYuan ?? 100}
+              onCommit={setHeatmapSpendYuan}
+              style={{ width: 120 }}
+            />
+          </Row>
+        </>
+      );
+    }
+
+    if (section === 'alerts') {
+      return (
+        <>
+          <p className="settings-lead" style={{ color: t.textSecondary }}>
+            计时结束时的本地提示，不依赖外网。
+          </p>
+          <Row title="提醒方式" hint="声音、系统通知，或两者一起">
+            <div className="chip-row">
+              {FEEDBACK_MODES.map((m) => (
+                <Chip
+                  key={m.id}
+                  active={feedbackMode === m.id}
+                  onClick={() => setFeedbackMode(m.id)}
+                >
+                  {m.label}
                 </Chip>
               ))}
             </div>
-          </>
-        )}
-        {feedbackMode !== 'none' ? (
-          <Button variant="ghost" onClick={onPreview} disabled={previewing}>
-            {previewing ? '试听中…' : '试一下当前效果'}
-          </Button>
-        ) : null}
-      </Card>
+          </Row>
+          {(feedbackMode === 'both' || feedbackMode === 'sound') && (
+            <Row title="铃声" hint="结束时播放的提示音">
+              <div className="chip-row">
+                {RINGTONE_PRESETS.map((r) => (
+                  <Chip
+                    key={r.id}
+                    active={ringtoneId === r.id}
+                    onClick={() => setRingtoneId(r.id)}
+                  >
+                    {r.label}
+                  </Chip>
+                ))}
+              </div>
+            </Row>
+          )}
+          {feedbackMode !== 'none' ? (
+            <Row title="试听" hint="按当前方式和铃声播一次">
+              <Button variant="ghost" onClick={onPreview} disabled={previewing}>
+                {previewing ? '试听中…' : '试听'}
+              </Button>
+            </Row>
+          ) : null}
+        </>
+      );
+    }
 
-      <Card>
-        <h3 style={{ margin: '0 0 8px', color: t.text }}>桌面行为</h3>
-        {!isElectron ? (
-          <p className="muted" style={{ color: t.muted }}>
-            当前为浏览器预览；托盘 / 开机启动在 Electron 窗口中生效。
-          </p>
-        ) : null}
-        <label
-          className="row"
-          style={{ marginBottom: 12, cursor: 'pointer', color: t.text }}
+    if (section === 'window') {
+      return (
+        <>
+          {!isElectron ? (
+            <p className="settings-lead" style={{ color: t.muted }}>
+              当前是浏览器预览，托盘和开机启动只在桌面窗口里生效。
+            </p>
+          ) : (
+            <p className="settings-lead" style={{ color: t.textSecondary }}>
+              只影响这台电脑上的星程窗口。
+            </p>
+          )}
+          <Row title="关闭到托盘" hint="点关闭时不退出，放到系统托盘">
+            <label className="settings-switch">
+              <input
+                type="checkbox"
+                checked={minimizeToTray}
+                onChange={(e) => setMinimizeToTray(e.target.checked)}
+              />
+              <i />
+            </label>
+          </Row>
+          <Row title="开机启动" hint="登录系统后自动打开星程">
+            <label className="settings-switch">
+              <input
+                type="checkbox"
+                checked={openAtLogin}
+                onChange={(e) => setOpenAtLogin(e.target.checked)}
+              />
+              <i />
+            </label>
+          </Row>
+        </>
+      );
+    }
+
+    return (
+      <div className="settings-about">
+        <strong style={{ color: t.text, fontSize: 18 }}>{APP_NAME_FULL}</strong>
+        <p style={{ color: t.textSecondary, margin: '6px 0 16px' }}>{APP_SLOGAN}</p>
+        <Row title="版本" hint="桌面端">
+          <span style={{ color: t.text }}>1.0.0</span>
+        </Row>
+        <Row title="运行平台" hint="当前窗口所在系统">
+          <span style={{ color: t.text }}>{platform}</span>
+        </Row>
+      </div>
+    );
+  })();
+
+  return (
+    <div className="settings-page" style={{ ['--settings-accent']: t.primary }}>
+      <div className="settings-head">
+        <h1 className="page-title" style={{ color: t.text }}>
+          设置
+        </h1>
+        <p className="page-sub" style={{ color: t.textSecondary }}>
+          {current.label} · {current.hint}
+        </p>
+      </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置分类">
+          {NAV.map((item) => {
+            const on = item.id === section;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`settings-nav-item${on ? ' on' : ''}`}
+                onClick={() => setSection(item.id)}
+                style={{
+                  color: on ? t.sidebarActive : t.text,
+                  background: on ? t.primarySoft : 'transparent',
+                }}
+              >
+                <span>{item.label}</span>
+                <small style={{ color: on ? t.primary : t.textSecondary }}>
+                  {item.hint}
+                </small>
+              </button>
+            );
+          })}
+        </nav>
+        <div
+          key={section}
+          className="settings-pane"
+          style={{ background: t.bgElevated, borderColor: t.border }}
         >
-          <input
-            type="checkbox"
-            checked={minimizeToTray}
-            onChange={(e) => setMinimizeToTray(e.target.checked)}
-          />
-          <span>关闭窗口时最小化到系统托盘（不退出）</span>
-        </label>
-        <label className="row" style={{ cursor: 'pointer', color: t.text }}>
-          <input
-            type="checkbox"
-            checked={openAtLogin}
-            onChange={(e) => setOpenAtLogin(e.target.checked)}
-          />
-          <span>开机自动启动星程</span>
-        </label>
-      </Card>
-
-      <Card>
-        <h3 style={{ margin: '0 0 8px', color: t.text }}>后端 API</h3>
-        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
-          默认本机 Docker：http://127.0.0.1:3001
-        </p>
-        <Field label="地址">
-          <TextInput value={url} onChange={(e) => setUrl(e.target.value)} />
-        </Field>
-        <div className="row">
-          <Button variant="outline" onClick={onSave}>
-            保存
-          </Button>
-          <Button variant="accent" onClick={onTest} disabled={testing}>
-            {testing ? '测试中…' : '测试连接'}
-          </Button>
+          <h2 className="settings-pane-title" style={{ color: t.text }}>
+            {current.label}
+          </h2>
+          {pane}
         </div>
-      </Card>
-
-      <Card>
-        <h3 style={{ margin: '0 0 8px', color: t.text }}>关于</h3>
-        <p style={{ color: t.text, margin: 0, fontWeight: 700 }}>{APP_NAME_FULL}</p>
-        <p className="muted" style={{ color: t.textSecondary }}>
-          {APP_SLOGAN}
-        </p>
-        <p className="muted" style={{ color: t.muted, lineHeight: 1.7 }}>
-          版本 1.0.0 · Electron 桌面端
-          <br />
-          运行平台：{platform}
-          <br />
-          工程目录：starway-pc
-        </p>
-      </Card>
+      </div>
     </div>
   );
 }

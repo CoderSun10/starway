@@ -61,6 +61,15 @@ services:
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
       DB_NAME: focusplan
       NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.qq.com}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_SECURE: ${EMAIL_SECURE:-true}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-星程 Starway}
+      AUTH_DEV_ECHO_CODE: ${AUTH_DEV_ECHO_CODE:-}
     depends_on:
       mysql:
         condition: service_healthy

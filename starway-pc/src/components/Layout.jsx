@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from '../stores/themeStore';
+import { useAuthStore } from '../stores/authStore';
 import { APP_NAME, APP_SLOGAN } from '../constants/brand';
 import appIcon from '../assets/icon.png';
 import ToastHost from './ToastHost';
@@ -39,6 +40,7 @@ const GROUPS = [
 export default function Layout() {
   const t = useTheme();
   const loc = useLocation();
+  const user = useAuthStore((s) => s.user);
   const framed =
     typeof window !== 'undefined' && !!window.starwayDesktop?.minimize;
   const [open, setOpen] = useState({ time: false, money: false });
@@ -160,6 +162,15 @@ export default function Layout() {
             <span className="label-text">设置</span>
           </NavLink>
         </nav>
+        {user?.email ? (
+          <div
+            className="sidebar-user"
+            title={user.email}
+            style={{ color: t.sidebarText }}
+          >
+            {user.email}
+          </div>
+        ) : null}
       </aside>
 
       <WindowChrome />

@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -25,8 +26,9 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { date, schedule_id, from, to, limit = 100, offset = 0 } = req.query;
-    let where = ' WHERE 1=1';
-    const params = [];
+    const uid = userId(req);
+    let where = ' WHERE s.user_id = ?';
+    const params = [uid];
 
     if (schedule_id) {
       where += ' AND s.schedule_id = ?';
@@ -88,8 +90,8 @@ router.get(
        FROM pomodoro_sessions s
        LEFT JOIN schedules sc ON sc.id = s.schedule_id
        LEFT JOIN tasks t ON t.id = s.task_id
-       WHERE s.id = ?`,
-      [req.params.id]
+       WHERE s.id = ? AND s.user_id = ?`,
+      [req.params.id, userId(req)]
     );
     if (!rows.length) throw httpError(404, '会话不存在', 'SESSION_NOT_FOUND');
     const r = rows[0];
@@ -132,12 +134,21 @@ router.post(
       throw httpError(400, '专注时长必须大于 0', 'VALIDATION_ERROR');
     }
 
+    const uid = userId(req);
     if (schedule_id) {
-      const sc = await query('SELECT id FROM schedules WHERE id = ?', [schedule_id]);
+      const sc = await query('SELECT id FROM schedules WHERE id = ? AND user_id = ?', [
+        schedule_id,
+        uid,
+      ]);
       if (!sc.length) throw httpError(400, '关联计划不存在', 'SCHEDULE_NOT_FOUND');
     }
     if (task_id) {
-      const tk = await query('SELECT id, schedule_id FROM tasks WHERE id = ?', [task_id]);
+      const tk = await query(
+        `SELECT t.id, t.schedule_id FROM tasks t
+         INNER JOIN schedules s ON s.id = t.schedule_id
+         WHERE t.id = ? AND s.user_id = ?`,
+        [task_id, uid]
+      );
       if (!tk.length) throw httpError(400, '关联任务不存在', 'TASK_NOT_FOUND');
       if (schedule_id && Number(tk[0].schedule_id) !== Number(schedule_id)) {
         throw httpError(400, '任务不属于该计划', 'TASK_SCHEDULE_MISMATCH');
@@ -150,9 +161,10 @@ router.post(
 
     const [result] = await require('../db').pool.execute(
       `INSERT INTO pomodoro_sessions
-        (schedule_id, task_id, content, started_at, ended_at, duration_minutes, planned_minutes, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (user_id, schedule_id, task_id, content, started_at, ended_at, duration_minutes, planned_minutes, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        uid,
         schedule_id || null,
         task_id || null,
         content ? String(content).trim() : null,
@@ -174,8 +186,11 @@ router.post(
         if (tid && Number.isFinite(pct)) {
           pct = Math.max(0, Math.min(100, Math.round(pct)));
           await query(
-            'UPDATE tasks SET completed_percent = ? WHERE id = ? AND schedule_id = ?',
-            [pct, tid, schedule_id]
+            `UPDATE tasks t
+             INNER JOIN schedules s ON s.id = t.schedule_id
+             SET t.completed_percent = ?
+             WHERE t.id = ? AND t.schedule_id = ? AND s.user_id = ?`,
+            [pct, tid, schedule_id, uid]
           );
         }
       }
@@ -188,8 +203,8 @@ router.post(
        FROM pomodoro_sessions s
        LEFT JOIN schedules sc ON sc.id = s.schedule_id
        LEFT JOIN tasks t ON t.id = s.task_id
-       WHERE s.id = ?`,
-      [result.insertId]
+       WHERE s.id = ? AND s.user_id = ?`,
+      [result.insertId, uid]
     );
 
     res.status(201).json({
@@ -208,7 +223,10 @@ router.post(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const result = await query('DELETE FROM pomodoro_sessions WHERE id = ?', [req.params.id]);
+    const result = await query(
+      'DELETE FROM pomodoro_sessions WHERE id = ? AND user_id = ?',
+      [req.params.id, userId(req)]
+    );
     if (result.affectedRows === 0) throw httpError(404, '会话不存在', 'SESSION_NOT_FOUND');
     res.json({ success: true, message: '已删除' });
   })

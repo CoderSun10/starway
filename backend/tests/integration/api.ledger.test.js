@@ -1,33 +1,25 @@
-const request = require('supertest');
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 
-const budgetPeriodsRouter = require('../../src/routes/budgetPeriods');
-const expensesRouter = require('../../src/routes/expenses');
-const statsRouter = require('../../src/routes/stats');
-const { errorHandler, notFound } = require('../../src/middleware/errorHandler');
 const { pool } = require('../../src/db');
 const { inclusiveDayCount } = require('../../src/utils/timeLogic');
-
-function createApp() {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-  app.use('/api/budget-periods', budgetPeriodsRouter);
-  app.use('/api/expenses', expensesRouter);
-  app.use('/api/stats', statsRouter);
-  app.use(notFound);
-  app.use(errorHandler);
-  return app;
-}
+const {
+  createApp,
+  createTestUser,
+  authed,
+  deleteTestUser,
+} = require('../helpers/auth');
 
 const app = createApp();
+let user;
+function req() {
+  return authed(app, user);
+}
 const createdPeriodIds = [];
 const createdExpenseIds = [];
 
 beforeAll(async () => {
   await pool.query('SELECT 1');
+  user = await createTestUser('ledger');
 });
 
 afterAll(async () => {
@@ -39,12 +31,13 @@ afterAll(async () => {
     await pool.query('DELETE FROM budget_periods WHERE id = ?', [id]).catch(() => {});
   }
   await pool.query("DELETE FROM budget_periods WHERE title LIKE '【测试】%'").catch(() => {});
+  await deleteTestUser(user?.id);
   await pool.end();
 });
 
 describe('账本 API', () => {
   test('非法日期 02-31 → 400', async () => {
-    const res = await request(app)
+    const res = await req()
       .post('/api/expenses')
       .send({ occurred_date: '2026-02-31', title: '【测试】坏日期', amount_fen: 100 });
     expect(res.status).toBe(400);
@@ -52,7 +45,7 @@ describe('账本 API', () => {
   });
 
   test('end < start → 400', async () => {
-    const res = await request(app).post('/api/budget-periods').send({
+    const res = await req().post('/api/budget-periods').send({
       title: '【测试】反序',
       start_date: '2026-09-10',
       end_date: '2026-09-01',
@@ -62,7 +55,7 @@ describe('账本 API', () => {
   });
 
   test('跨度 367 → 400', async () => {
-    const res = await request(app).post('/api/budget-periods').send({
+    const res = await req().post('/api/budget-periods').send({
       title: '【测试】过长',
       start_date: '2024-01-01',
       end_date: '2025-01-01',
@@ -73,7 +66,7 @@ describe('账本 API', () => {
   });
 
   test('创建时段 + 记账 + 列表 spent JOIN', async () => {
-    const period = await request(app).post('/api/budget-periods').send({
+    const period = await req().post('/api/budget-periods').send({
       title: '【测试】九月预算',
       start_date: '2026-09-01',
       end_date: '2026-09-30',
@@ -82,7 +75,7 @@ describe('账本 API', () => {
     expect(period.status).toBe(201);
     createdPeriodIds.push(period.body.data.id);
 
-    const e1 = await request(app).post('/api/expenses').send({
+    const e1 = await req().post('/api/expenses').send({
       occurred_date: '2026-09-10',
       title: '【测试】午餐',
       amount_fen: 3200,
@@ -90,14 +83,14 @@ describe('账本 API', () => {
     expect(e1.status).toBe(201);
     createdExpenseIds.push(e1.body.data.id);
 
-    const list = await request(app).get('/api/budget-periods?date=2026-09-10');
+    const list = await req().get('/api/budget-periods?date=2026-09-10');
     expect(list.status).toBe(200);
     const row = list.body.data.find((p) => p.id === period.body.data.id);
     expect(row.spent_fen).toBeGreaterThanOrEqual(3200);
   });
 
   test('day-summary 2026-08-31 … 2026-10-11 → 200 且 42 天', async () => {
-    const res = await request(app).get(
+    const res = await req().get(
       '/api/stats/day-summary?from=2026-08-31&to=2026-10-11'
     );
     expect(res.status).toBe(200);

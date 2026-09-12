@@ -13,10 +13,12 @@ Electron 桌面端 + Express / MySQL 后端。单用户、无登录。
 - 时间：计时、跨天计划与任务、专注统计（柱状 / 折线 / 饼图、平均线）
 - 用度：按日记账、预算时段、花费统计
 - 主题：石墨 / 晴空 / 暖阳 / 桃雾
+- 邮箱 + 密码登录；注册 / 重置密码发 6 位邮箱验证码（QQ SMTP）
+- 计划、番茄、记账按账号隔离
 - Docker Compose 一键启动 MySQL + API；启动时自动跑 migration
 - Windows 便携版 / 安装包，Ubuntu `.deb`
 
-当前不做：账号与多用户、手机 App、银行流水同步、多币种。
+当前不做：手机 App、银行流水同步、多币种。
 
 ## 结构
 
@@ -52,9 +54,10 @@ cp backend/.env.example backend/.env
 cp starway-pc/.env.example starway-pc/.env
 ```
 
-把 `changeme` 换成自己的密码。**不要提交 `.env`。**
+把 `changeme` 换成自己的密码，把 `JWT_SECRET` 换成随机长串。
+发验证码需要 QQ 邮箱 SMTP：`EMAIL_USER` 为邮箱，`EMAIL_PASS` 为邮箱授权码（不是登录密码）。**不要提交 `.env`。**
 
-桌面端默认请求 `http://127.0.0.1:3001`。换机器或换服务器时，在应用 **设置** 里改 API 地址即可，无需重新打包。
+桌面端默认请求 `http://49.234.199.55:3001`。本机 Docker 开发时，把 `starway-pc/.env` 里的 `VITE_API_BASE_URL` 改成 `http://127.0.0.1:3001` 后重新启动即可。
 
 ## 启动
 
@@ -113,6 +116,11 @@ npm run dist:linux    # Ubuntu .deb（需在 Linux / WSL 上执行）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | `/api/auth/send-code` | 发送邮箱验证码（register / reset） |
+| POST | `/api/auth/register` | 验证码注册 |
+| POST | `/api/auth/login` | 邮箱登录 |
+| GET | `/api/auth/me` | 当前用户 |
+| POST | `/api/auth/reset-password` | 验证码重置密码 |
 | GET/POST | `/api/schedules` | 时间计划 |
 | GET/PUT/DELETE | `/api/schedules/:id` | 计划详情 |
 | GET/PATCH/DELETE | `/api/tasks` | 任务 |
@@ -129,7 +137,7 @@ npm run dist:linux    # Ubuntu .deb（需在 Linux / WSL 上执行）
 
 ## 约定
 
-- 单用户、无鉴权。不要把此 API 暴露到公网而不加保护。
+- 业务接口需要登录（Bearer JWT）。不要把此 API 暴露到公网而不加保护。
 - MySQL 数据卷名保持 `focusplan_mysql_data`，库名 `focusplan`，升级容器名不会丢掉已有数据。
 
 ## 许可

@@ -1,35 +1,16 @@
 import axios from 'axios';
-import { storageGet, storageSet } from '../utils/storage';
+import { useAuthStore } from '../stores/authStore';
 
-const STORAGE_KEY = 'starway_pc_api_base';
 const DEFAULT_API = (
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3001'
+  import.meta.env.VITE_API_BASE_URL || 'http://49.234.199.55:3001'
 ).replace(/\/$/, '');
 
-function loadBase() {
-  const v = storageGet(STORAGE_KEY, 'ningshi_pc_api_base');
-  if (v && /^https?:\/\//.test(v)) return v.replace(/\/$/, '');
+export function getBaseURL() {
   return DEFAULT_API;
 }
 
-let baseURL = loadBase();
-
-export function getBaseURL() {
-  return baseURL;
-}
-
-export function setBaseURL(url) {
-  baseURL = (url || DEFAULT_API).replace(/\/$/, '');
-  try {
-    storageSet(STORAGE_KEY, baseURL);
-  } catch {
-    // ignore
-  }
-  api.defaults.baseURL = baseURL;
-}
-
 const api = axios.create({
-  baseURL,
+  baseURL: DEFAULT_API,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json; charset=utf-8',
@@ -37,17 +18,68 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    const status = error.response?.status;
     const message =
       error.response?.data?.message || error.message || '网络请求失败';
+    if (status === 401) {
+      const path = String(window.location.hash || '');
+      const onAuthPage =
+        path.includes('/login') ||
+        path.includes('/register') ||
+        path.includes('/forgot');
+      useAuthStore.getState().clear();
+      if (!onAuthPage) {
+        window.location.hash = '#/login';
+      }
+    }
     const err = new Error(message);
-    err.status = error.response?.status;
+    err.status = status;
     err.code = error.response?.data?.code;
     return Promise.reject(err);
   }
 );
+
+export async function sendAuthCode(payload) {
+  const { data } = await api.post('/api/auth/send-code', payload);
+  return data;
+}
+
+export async function register(payload) {
+  const { data } = await api.post('/api/auth/register', payload);
+  return data;
+}
+
+export async function login(payload) {
+  const { data } = await api.post('/api/auth/login', payload);
+  return data;
+}
+
+export async function fetchMe() {
+  const { data } = await api.get('/api/auth/me');
+  return data.data;
+}
+
+export async function changePassword(payload) {
+  const { data } = await api.post('/api/auth/change-password', payload);
+  return data;
+}
+
+export async function resetPassword(payload) {
+  const { data } = await api.post('/api/auth/reset-password', payload);
+  return data;
+}
 
 export async function fetchSchedules(params = {}) {
   const { data } = await api.get('/api/schedules', { params });

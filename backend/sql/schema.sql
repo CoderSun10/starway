@@ -10,9 +10,33 @@ CREATE DATABASE IF NOT EXISTS focusplan
 
 USE focusplan;
 
+-- 用户
+CREATE TABLE IF NOT EXISTS users (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  email          VARCHAR(120)    NOT NULL,
+  password_hash  VARCHAR(255)    NOT NULL,
+  created_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_users_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS email_codes (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  email       VARCHAR(120)    NOT NULL,
+  purpose     ENUM('register','reset') NOT NULL,
+  code_hash   VARCHAR(255)    NOT NULL,
+  expires_at  DATETIME        NOT NULL,
+  used_at     DATETIME        NULL,
+  attempts    INT UNSIGNED    NOT NULL DEFAULT 0,
+  created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_email_codes_lookup (email, purpose, created_at),
+  INDEX idx_email_codes_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 计划表
 CREATE TABLE IF NOT EXISTS schedules (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id       BIGINT UNSIGNED NULL COMMENT '所属用户',
   title         VARCHAR(200)    NOT NULL COMMENT '计划标题',
   description   TEXT            NULL COMMENT '计划描述',
   start_at      DATETIME        NOT NULL COMMENT '开始时间 UTC',
@@ -22,7 +46,8 @@ CREATE TABLE IF NOT EXISTS schedules (
   updated_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_schedules_start (start_at),
   INDEX idx_schedules_end (end_at),
-  INDEX idx_schedules_title (title)
+  INDEX idx_schedules_title (title),
+  INDEX idx_schedules_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 任务表（属于某个计划）
@@ -45,6 +70,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- 番茄钟会话记录
 CREATE TABLE IF NOT EXISTS pomodoro_sessions (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id         BIGINT UNSIGNED NULL COMMENT '所属用户',
   schedule_id     BIGINT UNSIGNED NULL COMMENT '关联计划（可选）',
   task_id         BIGINT UNSIGNED NULL COMMENT '关联任务（可选）',
   content         VARCHAR(500)    NULL COMMENT '自由填写的专注内容',
@@ -63,15 +89,19 @@ CREATE TABLE IF NOT EXISTS pomodoro_sessions (
   INDEX idx_sessions_started (started_at),
   INDEX idx_sessions_ended (ended_at),
   INDEX idx_sessions_schedule (schedule_id),
-  INDEX idx_sessions_task (task_id)
+  INDEX idx_sessions_task (task_id),
+  INDEX idx_sessions_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 客户端设置（时区偏好等）
 CREATE TABLE IF NOT EXISTS app_settings (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  setting_key   VARCHAR(100) NOT NULL UNIQUE,
+  user_id       BIGINT UNSIGNED NULL COMMENT '所属用户',
+  setting_key   VARCHAR(100) NOT NULL,
   setting_value VARCHAR(500) NOT NULL,
-  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_settings_user_key (user_id, setting_key),
+  INDEX idx_settings_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO app_settings (setting_key, setting_value)
@@ -88,6 +118,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 -- 预算时段（日历日闭区间，金额为分）
 CREATE TABLE IF NOT EXISTS budget_periods (
   id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id             BIGINT UNSIGNED NULL COMMENT '所属用户',
   title               VARCHAR(200)    NOT NULL COMMENT '预算时段标题',
   description         TEXT            NULL COMMENT '备注',
   start_date          DATE            NOT NULL COMMENT '开始日（北京日历日，含）',
@@ -96,12 +127,14 @@ CREATE TABLE IF NOT EXISTS budget_periods (
   created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_budget_periods_range (start_date, end_date),
-  INDEX idx_budget_periods_title (title)
+  INDEX idx_budget_periods_title (title),
+  INDEX idx_budget_periods_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 支出条目（按北京日历日，不强制关联预算）
 CREATE TABLE IF NOT EXISTS expense_entries (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id         BIGINT UNSIGNED NULL COMMENT '所属用户',
   occurred_date   DATE            NOT NULL COMMENT '消费归属日（北京日历日）',
   title           VARCHAR(200)    NOT NULL COMMENT '条目名称',
   amount_fen      INT UNSIGNED    NOT NULL COMMENT '金额（分）',
@@ -109,5 +142,6 @@ CREATE TABLE IF NOT EXISTS expense_entries (
   created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_expenses_date (occurred_date),
-  INDEX idx_expenses_date_id (occurred_date, id)
+  INDEX idx_expenses_date_id (occurred_date, id),
+  INDEX idx_expenses_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

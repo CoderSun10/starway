@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import RequireAuth from './components/RequireAuth';
 import CalendarPage from './pages/CalendarPage';
 import TimerPage from './pages/TimerPage';
 import SchedulesPage from './pages/SchedulesPage';
@@ -12,6 +13,9 @@ import BudgetPeriodFormPage from './pages/BudgetPeriodFormPage';
 import BudgetPeriodDetailPage from './pages/BudgetPeriodDetailPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import { useThemeStore } from './stores/themeStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -39,6 +43,10 @@ export default function App() {
     <HashRouter>
       <DesktopBridge />
       <Routes>
+        <Route path="login" element={<LoginPage />} />
+        <Route path="register" element={<RegisterPage />} />
+        <Route path="forgot" element={<ForgotPasswordPage />} />
+        <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<CalendarPage />} />
           <Route path="focus" element={<TimerPage />} />
@@ -58,6 +66,7 @@ export default function App() {
           <Route path="ledger/:id/edit" element={<BudgetPeriodFormPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
         </Route>
       </Routes>
     </HashRouter>

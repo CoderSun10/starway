@@ -1,6 +1,7 @@
 const express = require('express');
 const { query, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { userId } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -21,8 +22,11 @@ function toMysqlDatetime(value) {
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-async function loadScheduleDetail(id) {
-  const rows = await query('SELECT * FROM schedules WHERE id = ?', [id]);
+async function loadScheduleDetail(id, uid) {
+  const rows = await query('SELECT * FROM schedules WHERE id = ? AND user_id = ?', [
+    id,
+    uid,
+  ]);
   if (!rows.length) return null;
   const schedule = rows[0];
   const tasks = await query(
@@ -78,8 +82,9 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { date, q, from, to } = req.query;
-    let sql = 'SELECT * FROM schedules WHERE 1=1';
-    const params = [];
+    const uid = userId(req);
+    let sql = 'SELECT * FROM schedules WHERE user_id = ?';
+    const params = [uid];
 
     if (date) {
       // 当天 00:00 ~ 次日 00:00（按客户端传入的 UTC 边界更准确）
@@ -181,7 +186,7 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const detail = await loadScheduleDetail(req.params.id);
+    const detail = await loadScheduleDetail(req.params.id, userId(req));
     if (!detail) throw httpError(404, '计划不存在', 'SCHEDULE_NOT_FOUND');
     res.json({ success: true, data: detail });
   })
@@ -222,11 +227,12 @@ router.post(
       throw httpError(400, '结束时间必须晚于开始时间', 'VALIDATION_ERROR');
     }
 
+    const uid = userId(req);
     const id = await withTransaction(async (conn) => {
       const [result] = await conn.execute(
-        `INSERT INTO schedules (title, description, start_at, end_at, planned_minutes)
-         VALUES (?, ?, ?, ?, ?)`,
-        [String(title).trim(), description || null, startMysql, endMysql, planned]
+        `INSERT INTO schedules (user_id, title, description, start_at, end_at, planned_minutes)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [uid, String(title).trim(), description || null, startMysql, endMysql, planned]
       );
       const scheduleId = result.insertId;
       for (let i = 0; i < tasks.length; i++) {
@@ -247,7 +253,7 @@ router.post(
       return scheduleId;
     });
 
-    const detail = await loadScheduleDetail(id);
+    const detail = await loadScheduleDetail(id, uid);
     res.status(201).json({ success: true, data: detail });
   })
 );
@@ -257,7 +263,11 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
-    const existing = await query('SELECT id FROM schedules WHERE id = ?', [id]);
+    const uid = userId(req);
+    const existing = await query('SELECT id FROM schedules WHERE id = ? AND user_id = ?', [
+      id,
+      uid,
+    ]);
     if (!existing.length) throw httpError(404, '计划不存在', 'SCHEDULE_NOT_FOUND');
 
     const { title, description, start_at, end_at, planned_minutes, tasks } = req.body || {};
@@ -288,7 +298,7 @@ router.put(
       await conn.execute(
         `UPDATE schedules
          SET title = ?, description = ?, start_at = ?, end_at = ?, planned_minutes = ?
-         WHERE id = ?`,
+         WHERE id = ? AND user_id = ?`,
         [
           String(title).trim(),
           description || null,
@@ -296,6 +306,7 @@ router.put(
           toMysqlDatetime(end_at),
           planned,
           id,
+          uid,
         ]
       );
 
@@ -358,7 +369,7 @@ router.put(
       }
     });
 
-    const detail = await loadScheduleDetail(id);
+    const detail = await loadScheduleDetail(id, uid);
     res.json({ success: true, data: detail });
   })
 );
@@ -367,7 +378,10 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const result = await query('DELETE FROM schedules WHERE id = ?', [req.params.id]);
+    const result = await query('DELETE FROM schedules WHERE id = ? AND user_id = ?', [
+      req.params.id,
+      userId(req),
+    ]);
     if (result.affectedRows === 0) {
       throw httpError(404, '计划不存在', 'SCHEDULE_NOT_FOUND');
     }
