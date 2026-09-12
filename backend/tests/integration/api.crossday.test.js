@@ -181,7 +181,7 @@ describe('集成：番茄会话统计归属（跨天）', () => {
     for (const row of daily.body.data || []) {
       map[row.day] = Number(row.total_minutes);
     }
-    // 至少 18 号有数据（可能还有 seed）
+    // 至少 18 号有数据
     expect(map['2026-07-18']).toBeGreaterThanOrEqual(90);
   });
 

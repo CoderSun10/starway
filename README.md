@@ -26,8 +26,7 @@ Electron 桌面端 + Express / MySQL 后端。单用户、无登录。
 .
 ├── backend/              # REST API（Express + mysql2）
 │   ├── src/
-│   ├── sql/              # schema.sql、seed.sql、migrations/
-│   └── scripts/          # load-demo.js 演示数据
+│   └── sql/              # schema.sql、migrations/
 ├── docker-compose.yml
 ├── .env.example
 └── starway-pc/           # 桌面端（Electron + Vite + React）
@@ -92,15 +91,6 @@ cd backend
 npm install
 npm run dev
 ```
-
-演示数据（会清空计划 / 会话 / 账本后重灌，仅开发用）：
-
-```bash
-cd backend
-node scripts/load-demo.js
-```
-
-演示数据截止 **2026-09-11**（含当天）。
 
 ## 打包
 
