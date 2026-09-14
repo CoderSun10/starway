@@ -17,6 +17,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useTheme } from '../stores/themeStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import {
   fetchBySchedule,
   fetchDailyStats,
@@ -40,6 +41,7 @@ import {
   PageHeader,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
+import ContextMenu from '../components/ContextMenu';
 
 const PIE_TOP = 5;
 const CHART_H = 260;
@@ -159,9 +161,48 @@ function renderActiveShape(props) {
   );
 }
 
+/** 顶部圆角的柱形路径，和 recharts radius={[6,6,0,0]} 的样子一致 */
+function topRoundedPath(x, y, w, h, r) {
+  if (h <= 0 || w <= 0) return null;
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  return (
+    `M${x},${y + h} L${x},${y + rr} Q${x},${y} ${x + rr},${y} ` +
+    `L${x + w - rr},${y} Q${x + w},${y} ${x + w},${y + rr} L${x + w},${y + h} Z`
+  );
+}
+
+/**
+ * 用度统计的柱子：
+ * 先画一根从 0 到「合计」的柱子（蓝），再把「记账」那根绿柱压在上面，
+ * 于是只有固定支出那一段露在绿色上面。宽度、圆角都和原来一致。
+ */
+function SpendBar({
+  plainColor,
+  totalColor,
+  x,
+  y,
+  width,
+  height,
+  payload,
+}) {
+  const total = Number(payload?.spend_fen) || 0;
+  if (total <= 0 || height <= 0) return null;
+  const plain = Number(payload?.plain_fen) || 0;
+  const plainH = Math.max(0, Math.min(height, (plain / total) * height));
+  const plainY = y + height - plainH;
+  return (
+    <g>
+      <path d={topRoundedPath(x, y, width, height, 6)} fill={totalColor} />
+      <path d={topRoundedPath(x, plainY, width, plainH, 6)} fill={plainColor} />
+    </g>
+  );
+}
+
 export default function StatsPage({ mode = 'focus' }) {
   const isMoney = mode === 'money';
   const t = useTheme();
+  const includeFixed = useSettingsStore((s) => s.statsIncludeFixed);
+  const setIncludeFixed = useSettingsStore((s) => s.setStatsIncludeFixed);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState(null);
@@ -174,13 +215,23 @@ export default function StatsPage({ mode = 'focus' }) {
   const [pieHover, setPieHover] = useState(null);
   const [pieSelected, setPieSelected] = useState(null);
   const pieActive = pieHover ?? pieSelected;
+  // 右键菜单坐标；为 null 表示没打开
+  const [menu, setMenu] = useState(null);
 
   const load = useCallback(async () => {
     const today = todayStr();
     try {
       const [ov, d, bs, page] = await Promise.all([
-        fetchOverview({ today }),
-        fetchDailyStats({ days, today }),
+        fetchOverview({
+          today,
+          ...(isMoney && includeFixed ? { include_fixed: 1 } : {}),
+        }),
+        fetchDailyStats({
+          days,
+          today,
+          // 固定支出只影响花费，专注统计用不到
+          ...(isMoney && includeFixed ? { include_fixed: 1 } : {}),
+        }),
         fetchBySchedule({ days, today }),
         fetchSessionsPaged({ limit: SESSION_PAGE }),
       ]);
@@ -195,7 +246,7 @@ export default function StatsPage({ mode = 'focus' }) {
     } finally {
       setLoading(false);
     }
-  }, [days]);
+  }, [days, isMoney, includeFixed]);
 
   async function loadMoreSessions() {
     const next = sessionLimit + SESSION_PAGE;
@@ -221,11 +272,18 @@ export default function StatsPage({ mode = 'focus' }) {
 
   const barData = useMemo(
     () =>
-      (daily || []).map((x) => ({
-        day: String(x.day).slice(5),
-        minutes: Number(x.total_minutes) || 0,
-        spend_fen: Number(x.spend_fen) || 0,
-      })),
+      (daily || []).map((x) => {
+        const spend = Number(x.spend_fen) || 0;
+        const fixed = Number(x.fixed_fen) || 0;
+        return {
+          day: String(x.day).slice(5),
+          minutes: Number(x.total_minutes) || 0,
+          spend_fen: spend,
+          // 柱子叠两段：记账部分 + 固定支出部分
+          fixed_fen: fixed,
+          plain_fen: Math.max(spend - fixed, 0),
+        };
+      }),
     [daily]
   );
 
@@ -288,8 +346,40 @@ export default function StatsPage({ mode = 'focus' }) {
     },
   ];
 
+  // 刷新按钮去掉了，改成右键菜单（桌面上本来也没有默认右键菜单）
+  const openMenu = (e) => {
+    e.preventDefault();
+    const sel = window.getSelection?.()?.toString().trim() || '';
+    setMenu({ x: e.clientX, y: e.clientY, sel });
+  };
+
+  const menuItems = [
+    {
+      id: 'refresh',
+      label: '刷新',
+      hint: '重新拉取',
+      onSelect: () => {
+        setLoading(true);
+        load();
+      },
+    },
+  ];
+  if (menu?.sel) {
+    menuItems.push({
+      id: 'copy',
+      label: '复制',
+      hint: '选中内容',
+      onSelect: () => {
+        navigator.clipboard?.writeText(menu.sel).then(
+          () => toast.success('已复制'),
+          () => toast.error('复制失败')
+        );
+      },
+    });
+  }
+
   return (
-    <div className="stack">
+    <div className="stack" onContextMenu={openMenu}>
       <PageHeader
         title={isMoney ? '用度统计' : '专注统计'}
         sub={
@@ -298,15 +388,30 @@ export default function StatsPage({ mode = 'focus' }) {
             : `图表：近 ${days} 天 · 会话可加载更多`
         }
         right={
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setLoading(true);
-              load();
-            }}
-          >
-            刷新
-          </Button>
+          isMoney ? (
+            <label
+              className="row"
+              title="把每月固定支出也计入花费"
+              style={{
+                gap: 8,
+                fontSize: 13,
+                color: t.textSecondary,
+                cursor: 'pointer',
+                userSelect: 'none',
+                ['--settings-accent']: t.primary,
+              }}
+            >
+              含固定支出
+              <span className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={!!includeFixed}
+                  onChange={(e) => setIncludeFixed(e.target.checked)}
+                />
+                <i />
+              </span>
+            </label>
+          ) : undefined
         }
       />
 
@@ -449,7 +554,13 @@ export default function StatsPage({ mode = 'focus' }) {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(v) => [formatFen(v), '花费']}
+                  formatter={(v, _n, item) => {
+                    const fixed = Number(item?.payload?.fixed_fen) || 0;
+                    return [
+                      formatFen(v),
+                      fixed > 0 ? `花费（含固定 ${formatFen(fixed)}）` : '花费',
+                    ];
+                  }}
                   animationDuration={200}
                 />
                 <ReferenceLine
@@ -470,8 +581,11 @@ export default function StatsPage({ mode = 'focus' }) {
                 />
                 <Bar
                   dataKey="spend_fen"
+                  name="花费"
                   fill={t.accent}
-                  radius={[6, 6, 0, 0]}
+                  shape={
+                    <SpendBar plainColor={t.accent} totalColor={t.primary} />
+                  }
                   isAnimationActive
                   animationDuration={700}
                 />
@@ -768,6 +882,12 @@ export default function StatsPage({ mode = 'focus' }) {
       </Card>
       </div>
       )}
+      <ContextMenu
+        x={menu?.x}
+        y={menu?.y}
+        items={menuItems}
+        onClose={() => setMenu(null)}
+      />
     </div>
   );
 }

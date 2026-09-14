@@ -11,7 +11,7 @@ Electron 桌面端 + Express / MySQL 后端。单用户、无登录。
 - 无边框圆角窗口、系统托盘、关闭进托盘、开机自启
 - 日历：普通视图 / 热力图；格子显示当日专注分钟与花费
 - 时间：计时、跨天计划与任务、专注统计（柱状 / 折线 / 饼图、平均线）
-- 用度：按日记账、预算时段、花费统计
+- 用度：按日记账、预算时段、每月固定支出、花费统计
 - 主题：石墨 / 晴空 / 暖阳 / 桃雾
 - 邮箱 + 密码登录；注册 / 重置密码发 6 位邮箱验证码（QQ SMTP）
 - 计划、番茄、记账按账号隔离
@@ -44,19 +44,17 @@ Electron 桌面端 + Express / MySQL 后端。单用户、无登录。
 ```powershell
 copy .env.example .env
 copy backend\.env.example backend\.env
-copy starway-pc\.env.example starway-pc\.env
 ```
 
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
-cp starway-pc/.env.example starway-pc/.env
 ```
 
 把 `changeme` 换成自己的密码，把 `JWT_SECRET` 换成随机长串。
 发验证码需要 QQ 邮箱 SMTP：`EMAIL_USER` 为邮箱，`EMAIL_PASS` 为邮箱授权码（不是登录密码）。**不要提交 `.env`。**
 
-桌面端默认请求 `http://49.234.199.55:3001`。本机 Docker 开发时，把 `starway-pc/.env` 里的 `VITE_API_BASE_URL` 改成 `http://127.0.0.1:3001` 后重新启动即可。
+桌面端不在这里配：它按环境自动读 `starway-pc/.env.development`（开发，连 `http://127.0.0.1:3001`）和 `.env.production`（打包发行，连线上 API）。这两个文件随仓库提交，要改地址改它们。
 
 ## 启动
 
@@ -122,6 +120,11 @@ npm run dist:linux    # Ubuntu .deb（需在 Linux / WSL 上执行）
 | GET/PUT | `/api/settings` | 时区等 |
 | GET/POST | `/api/budget-periods` | 用度预算时段 |
 | GET/POST | `/api/expenses` | 按日记账（含 `created_at` 填写时间） |
+| GET/PUT/DELETE | `/api/expenses/:id` | 账目详情 |
+| GET/POST | `/api/fixed-expenses` | 每月固定支出模板（花呗 / 订阅 / 梯子） |
+| GET | `/api/fixed-expenses/month?month=YYYY-MM` | 某月清单：实际金额、已付状态、合计 |
+| PUT/DELETE | `/api/fixed-expenses/:id` | 固定支出详情 |
+| PUT | `/api/fixed-expenses/:id/month/:month` | 记某月实际：`amount_fen` / `paid` / `reset` |
 
 时间一律存 **UTC**，界面按 `Asia/Shanghai` 日历日。金额库内为 **分**，界面为元。
 

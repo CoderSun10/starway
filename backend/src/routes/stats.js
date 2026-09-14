@@ -17,6 +17,86 @@ function httpError(status, message, code) {
   return err;
 }
 
+/** 该日期所在周的周一（北京日历日） */
+function mondayOf(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+  return shiftDay(ymd, -dow);
+}
+
+/**
+ * 区间内固定支出的合计。
+ * 按「涉及到的月份 × 每个启用项」展开：已付的记在付款日，其余记在当月应扣日，
+ * 某月没记过也按预计值计入。
+ */
+async function fixedSpendInRange(uid, fromDay, toDay) {
+  if (!fromDay || !toDay || fromDay > toDay) return 0;
+  const months = monthsBetween(fromDay, toDay);
+  if (!months.length) return 0;
+  const monthSelect = months.map(() => 'SELECT ? AS month').join(' UNION ALL ');
+  const rows = await query(
+    `SELECT COALESCE(SUM(x.amount_fen), 0) AS total_fen
+     FROM (
+       SELECT COALESCE(
+                r.paid_date,
+                DATE_ADD(
+                  STR_TO_DATE(CONCAT(m.month, '-01'), '%Y-%m-%d'),
+                  INTERVAL LEAST(
+                    t.due_day,
+                    DAY(LAST_DAY(CONCAT(m.month, '-01')))
+                  ) - 1 DAY
+                )
+              ) AS day,
+              COALESCE(r.amount_fen, t.expected_amount_fen) AS amount_fen
+       FROM fixed_expenses t
+       JOIN (${monthSelect}) m
+       LEFT JOIN fixed_expense_records r
+         ON r.fixed_expense_id = t.id
+        AND r.billing_month = m.month
+        AND r.user_id = t.user_id
+       WHERE t.user_id = ? AND t.enabled = 1
+     ) x
+     WHERE x.day >= ? AND x.day <= ?`,
+    [...months, uid, fromDay, toDay]
+  );
+  return Number(rows[0].total_fen);
+}
+
+/** 单日统计的空白形状。fixed_fen 单独给出来，前端好把它叠在柱子上 */
+function emptyDay(day) {
+  return {
+    day,
+    total_minutes: 0,
+    pomodoro_count: 0,
+    spend_fen: 0,
+    fixed_fen: 0,
+    expense_count: 0,
+  };
+}
+
+/** YYYY-MM-DD 往前/后挪 n 天 */
+function shiftDay(ymd, n) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** 闭区间涉及到的北京日历月，如 2026-08-15~2026-09-14 → ['2026-08','2026-09'] */
+function monthsBetween(fromYmd, toYmd) {
+  const out = [];
+  let [y, m] = String(fromYmd).split('-').map(Number);
+  const [ty, tm] = String(toYmd).split('-').map(Number);
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
 /**
  * 统计接口
  * 默认按 Asia/Shanghai 日历日聚合（CONVERT_TZ +08:00）
@@ -29,6 +109,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const uid = userId(req);
     const today = req.query.today; // 客户端时区下的今天 YYYY-MM-DD
+    // 是否把每月固定支出也算进各档花费
+    const includeFixed = String(req.query.include_fixed || '') === '1';
     // 若未传，用上海时区今天
     const todayExpr = today
       ? '?'
@@ -148,6 +230,37 @@ router.get(
       today ? [uid, today, today, today, today] : [uid]
     );
 
+    // 各档花费要额外加上的固定支出。月份窗口同样截到今天，
+    // 免得把还没到的应扣日算进「本月花费」而对不上柱子。
+    let fixedSpend = { today: 0, yesterday: 0, week: 0, lastWeek: 0, month: 0 };
+    if (includeFixed) {
+      const baseDay =
+        today ||
+        new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+      const mon = mondayOf(baseDay);
+      const prevMon = shiftDay(mon, -7);
+      const [
+        fToday,
+        fYesterday,
+        fWeek,
+        fLastWeek,
+        fMonth,
+      ] = await Promise.all([
+        fixedSpendInRange(uid, baseDay, baseDay),
+        fixedSpendInRange(uid, shiftDay(baseDay, -1), shiftDay(baseDay, -1)),
+        fixedSpendInRange(uid, mon, baseDay),
+        fixedSpendInRange(uid, prevMon, shiftDay(mon, -1)),
+        fixedSpendInRange(uid, `${baseDay.slice(0, 7)}-01`, baseDay),
+      ]);
+      fixedSpend = {
+        today: fToday,
+        yesterday: fYesterday,
+        week: fWeek,
+        lastWeek: fLastWeek,
+        month: fMonth,
+      };
+    }
+
     res.json({
       success: true,
       data: {
@@ -159,11 +272,15 @@ router.get(
         month_pomodoros: Number(monthRows[0].pomodoro_count),
         yesterday_minutes: Number(yesterdayRows[0].total_minutes),
         last_week_minutes: Number(lastWeekRows[0].total_minutes),
-        today_spend_fen: Number(spendTodayRows[0].total_fen),
-        week_spend_fen: Number(spendWeekRows[0].total_fen),
-        month_spend_fen: Number(spendMonthRows[0].total_fen),
-        yesterday_spend_fen: Number(spendYesterdayRows[0].total_fen),
-        last_week_spend_fen: Number(spendLastWeekRows[0].total_fen),
+        today_spend_fen: Number(spendTodayRows[0].total_fen) + fixedSpend.today,
+        week_spend_fen: Number(spendWeekRows[0].total_fen) + fixedSpend.week,
+        month_spend_fen: Number(spendMonthRows[0].total_fen) + fixedSpend.month,
+        yesterday_spend_fen:
+          Number(spendYesterdayRows[0].total_fen) + fixedSpend.yesterday,
+        last_week_spend_fen:
+          Number(spendLastWeekRows[0].total_fen) + fixedSpend.lastWeek,
+        fixed_today_fen: fixedSpend.today,
+        fixed_month_fen: fixedSpend.month,
       },
     });
   })
@@ -176,6 +293,8 @@ router.get(
     const uid = userId(req);
     const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
     const today = req.query.today; // YYYY-MM-DD 上海/本地今天
+    // 是否把每月固定支出也算进当天花费
+    const includeFixed = String(req.query.include_fixed || '') === '1';
 
     // 生成最近 N 天每天汇总
     const rows = await query(
@@ -212,26 +331,63 @@ router.get(
     for (const r of rows) {
       const key = typeof r.day === 'string' ? r.day.slice(0, 10) : String(r.day).slice(0, 10);
       map[key] = {
-        day: key,
+        ...emptyDay(key),
         total_minutes: Number(r.total_minutes),
         pomodoro_count: Number(r.pomodoro_count),
-        spend_fen: 0,
-        expense_count: 0,
       };
     }
     for (const r of spendRows) {
       const key = typeof r.day === 'string' ? r.day.slice(0, 10) : String(r.day).slice(0, 10);
-      if (!map[key]) {
-        map[key] = {
-          day: key,
-          total_minutes: 0,
-          pomodoro_count: 0,
-          spend_fen: 0,
-          expense_count: 0,
-        };
-      }
+      if (!map[key]) map[key] = emptyDay(key);
       map[key].spend_fen = Number(r.spend_fen);
       map[key].expense_count = Number(r.expense_count);
+    }
+
+    // 固定支出：已付的记在付款日，其余记在当月应扣日（31 号遇小月顺延到月底）。
+    // 按「涉及到的月份 × 每个启用项」展开，所以某月没记过也会按预计值计入，
+    // 结果和「固定支出」页的本月合计一致。
+    if (includeFixed) {
+      const baseDay =
+        today ||
+        new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+      const fromDay = shiftDay(baseDay, -(days - 1));
+      const months = monthsBetween(fromDay, baseDay);
+      const monthSelect = months.map(() => 'SELECT ? AS month').join(' UNION ALL ');
+      const fixedRows = await query(
+        `SELECT x.day,
+                COALESCE(SUM(x.amount_fen), 0) AS spend_fen,
+                COUNT(*) AS expense_count
+         FROM (
+           SELECT COALESCE(
+                    r.paid_date,
+                    DATE_ADD(
+                      STR_TO_DATE(CONCAT(m.month, '-01'), '%Y-%m-%d'),
+                      INTERVAL LEAST(
+                        t.due_day,
+                        DAY(LAST_DAY(CONCAT(m.month, '-01')))
+                      ) - 1 DAY
+                    )
+                  ) AS day,
+                  COALESCE(r.amount_fen, t.expected_amount_fen) AS amount_fen
+           FROM fixed_expenses t
+           JOIN (${monthSelect}) m
+           LEFT JOIN fixed_expense_records r
+             ON r.fixed_expense_id = t.id
+            AND r.billing_month = m.month
+            AND r.user_id = t.user_id
+           WHERE t.user_id = ? AND t.enabled = 1
+         ) x
+         WHERE x.day >= ? AND x.day <= ?
+         GROUP BY x.day`,
+        [...months, uid, fromDay, baseDay]
+      );
+      for (const r of fixedRows) {
+        const key = typeof r.day === 'string' ? r.day.slice(0, 10) : String(r.day).slice(0, 10);
+        if (!map[key]) map[key] = emptyDay(key);
+        map[key].fixed_fen += Number(r.spend_fen);
+        map[key].spend_fen += Number(r.spend_fen);
+        map[key].expense_count += Number(r.expense_count);
+      }
     }
 
     const end = today
@@ -247,15 +403,7 @@ router.get(
       const dt = new Date(Date.UTC(y, m - 1, d));
       dt.setUTCDate(dt.getUTCDate() - i);
       const key = dt.toISOString().slice(0, 10);
-      result.push(
-        map[key] || {
-          day: key,
-          total_minutes: 0,
-          pomodoro_count: 0,
-          spend_fen: 0,
-          expense_count: 0,
-        }
-      );
+      result.push(map[key] || emptyDay(key));
     }
 
     res.json({ success: true, data: result });

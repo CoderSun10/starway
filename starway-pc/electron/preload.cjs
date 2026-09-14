@@ -10,6 +10,16 @@ contextBridge.exposeInMainWorld('starwayDesktop', {
   showWindow: () => ipcRenderer.invoke('desktop:showWindow'),
   quit: () => ipcRenderer.invoke('desktop:quit'),
   setTrayTooltip: (text) => ipcRenderer.invoke('desktop:setTrayTooltip', text),
+  downloadUpdate: (payload) =>
+    ipcRenderer.invoke('desktop:downloadUpdate', payload || {}),
+  onUpdateProgress: (cb) => {
+    const handler = (_e, value) => cb(value || {});
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  openExternal: (url) => ipcRenderer.invoke('desktop:openExternal', url),
+  showItemInFolder: (target) =>
+    ipcRenderer.invoke('desktop:showItemInFolder', target),
   onNavigate: (cb) => {
     const handler = (_e, route) => cb(route);
     ipcRenderer.on('navigate', handler);

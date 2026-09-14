@@ -1,6 +1,6 @@
 {
   "name": "starway-backend",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Starway REST API - Express + MySQL",
   "main": "src/index.js",
   "scripts": {

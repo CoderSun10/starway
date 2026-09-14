@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTheme } from '../stores/themeStore';
 import { useTimerStore } from '../stores/timerStore';
 import { formatCountdown } from '../utils/time';
+import { getBaseURL } from '../services/api';
 import { Button, Card, Chip, NumericInput, PageHeader } from '../components/ui';
 
 const R = 130;
@@ -135,7 +136,7 @@ export default function TimerPage() {
           </div>
           <p className="muted" style={{ color: t.muted, marginTop: 16, lineHeight: 1.6 }}>
             提示：结束后可关联计划或自由记录。当前后端
-            <code style={{ marginLeft: 4 }}>http://49.234.199.55:3001</code>
+            <code style={{ marginLeft: 4 }}>{getBaseURL()}</code>
             。
           </p>
         </Card>

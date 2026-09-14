@@ -33,6 +33,7 @@ const GROUPS = [
       { to: '/money/journal', label: '记账', icon: '✎' },
       { to: '/ledger', label: '账本', icon: '☰' },
       { to: '/money/stats', label: '统计', icon: '▣' },
+      { to: '/money/fixed', label: '固定支出', icon: '⟳' },
     ],
   },
 ];

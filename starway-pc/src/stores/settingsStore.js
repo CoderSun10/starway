@@ -22,6 +22,7 @@ function persist(partial, get) {
     openAtLogin,
     heatmapTimeMax,
     heatmapSpendYuan,
+    statsIncludeFixed,
   } = next;
   try {
     storageSet(
@@ -33,6 +34,7 @@ function persist(partial, get) {
         openAtLogin,
         heatmapTimeMax,
         heatmapSpendYuan,
+        statsIncludeFixed,
       })
     );
   } catch {
@@ -49,6 +51,8 @@ export const useSettingsStore = create((set, get) => {
     openAtLogin: !!saved.openAtLogin,
     heatmapTimeMax: Number(saved.heatmapTimeMax) > 0 ? Number(saved.heatmapTimeMax) : 120,
     heatmapSpendYuan: Number(saved.heatmapSpendYuan) > 0 ? Number(saved.heatmapSpendYuan) : 100,
+    // 用度统计是否把每月固定支出算进去
+    statsIncludeFixed: !!saved.statsIncludeFixed,
     desktopReady: false,
 
     setFeedbackMode(mode) {
@@ -75,6 +79,10 @@ export const useSettingsStore = create((set, get) => {
       const n = Math.min(100000, Math.max(1, Math.round(Number(yuan) || 100)));
       set({ heatmapSpendYuan: n });
       persist({ heatmapSpendYuan: n }, get);
+    },
+    setStatsIncludeFixed(enabled) {
+      set({ statsIncludeFixed: !!enabled });
+      persist({ statsIncludeFixed: !!enabled }, get);
     },
     async setOpenAtLogin(enabled) {
       set({ openAtLogin: !!enabled });

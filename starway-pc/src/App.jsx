@@ -9,6 +9,7 @@ import ScheduleDetailPage from './pages/ScheduleDetailPage';
 import ScheduleFormPage from './pages/ScheduleFormPage';
 import LedgerPage from './pages/LedgerPage';
 import ExpensesPage from './pages/ExpensesPage';
+import FixedExpensesPage from './pages/FixedExpensesPage';
 import BudgetPeriodFormPage from './pages/BudgetPeriodFormPage';
 import BudgetPeriodDetailPage from './pages/BudgetPeriodDetailPage';
 import StatsPage from './pages/StatsPage';
@@ -18,6 +19,8 @@ import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import { useThemeStore } from './stores/themeStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useAuthStore } from './stores/authStore';
+import { fetchMe } from './services/api';
 
 function DesktopBridge() {
   const nav = useNavigate();
@@ -28,6 +31,26 @@ function DesktopBridge() {
       if (route) nav(route);
     });
   }, [nav]);
+  return null;
+}
+
+/**
+ * 拿着本地 token 问一次服务端是否仍然有效。
+ * 账号已不存在或 token 过期时接口返回 401，axios 拦截器会清掉登录态，
+ * 于是界面回到登录页，而不是停在一个取不到数据的主页上。
+ */
+function SessionCheck() {
+  const token = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchMe()
+      .then((user) => useAuthStore.getState().updateUser(user))
+      .catch(() => {
+        // 401 已由拦截器处理；网络不通就保持现状，交给离线超时判断
+      });
+  }, [token]);
+
   return null;
 }
 
@@ -42,6 +65,7 @@ export default function App() {
   return (
     <HashRouter>
       <DesktopBridge />
+      <SessionCheck />
       <Routes>
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
@@ -58,6 +82,7 @@ export default function App() {
           <Route path="money" element={<Outlet />}>
             <Route index element={<Navigate to="journal" replace />} />
             <Route path="journal" element={<ExpensesPage />} />
+            <Route path="fixed" element={<FixedExpensesPage />} />
             <Route path="stats" element={<StatsPage mode="money" />} />
           </Route>
           <Route path="ledger" element={<LedgerPage />} />

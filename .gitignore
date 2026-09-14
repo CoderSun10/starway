@@ -43,6 +43,9 @@ node_modules/
 .env.*
 !.env.example
 !**/.env.example
+# 前端按环境区分的公开 API 地址（无密钥），要随仓库走
+!**/.env.development
+!**/.env.production
 *.pem
 *.key
 *.p8

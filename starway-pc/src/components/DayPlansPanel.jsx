@@ -45,9 +45,6 @@ export default function DayPlansPanel({ day, schedules, budgets, summary }) {
           {timePlans.map((timePlan) => {
             const taskPct = Number(timePlan.progress_percent) || 0;
             const plannedMin = Number(timePlan.planned_minutes) || 0;
-            const actualMin = Number(timePlan.actual_focused_minutes) || 0;
-            const timePct =
-              plannedMin > 0 ? Math.round((actualMin / plannedMin) * 100) : 0;
             return (
               <Link
                 key={`t-${timePlan.id}`}
@@ -60,19 +57,11 @@ export default function DayPlansPanel({ day, schedules, budgets, summary }) {
                 <h3 style={{ color: t.text }}>{timePlan.title}</h3>
                 <div className="day-plan-bars">
                   <ProgressBar
-                    label="任务进度"
+                    label="完成度"
                     current={taskPct}
                     total={100}
                     percent={taskPct}
                     fill={t.primary}
-                  />
-                  <ProgressBar
-                    label="专注时长"
-                    current={actualMin}
-                    total={Math.max(plannedMin, 1)}
-                    percent={timePct}
-                    fill={t.accent}
-                    tone={actualMin > plannedMin ? 'danger' : undefined}
                   />
                 </div>
                 <p className="day-plan-meta" style={{ color: t.textSecondary }}>

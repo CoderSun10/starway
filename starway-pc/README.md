@@ -1,16 +1,25 @@
 # 星程 Starway · 桌面端
 
 独立 Electron 工程。  
-共用同一套后端 API（默认 `http://49.234.199.55:3001`，见 `.env` 中 `VITE_API_BASE_URL`）。
+共用同一套后端 API。地址按环境从 `.env.development` / `.env.production` 读，源码里不写死：
+
+| 模式 | 文件 | 地址 |
+|------|------|------|
+| 开发（`npm run dev` / `dev:web`） | `.env.development` | `http://127.0.0.1:3001` |
+| 打包发行（`vite build` / `dist:*`） | `.env.production` | `http://49.234.199.55:3001` |
+
+这两个文件随仓库提交，改地址改它们即可。`.env` 是个人本地覆盖，可选，不提交。
 
 ## 开发
 
 ```bash
 cd starway-pc
-copy .env.example .env
 npm install
 npm run dev
 ```
+
+`npm run dev` 开 Electron 窗口，`npm run dev:web` 只开浏览器页面（<http://127.0.0.1:5173>）。
+`copy .env.example .env` 只在需要临时指向别的后端时才用。
 
 需先启动后端（仓库根目录：`docker compose up -d --build`）。
 
@@ -18,8 +27,8 @@ npm run dev
 
 | 平台 | 命令 | 产物 |
 |------|------|------|
-| Windows 便携版 | `npm run dist:win` | `release/Starway-1.1.0-x64.exe`（免安装） |
-| Windows 安装包 | 同上 | `release/Starway-Setup-1.1.0-x64.exe` |
+| Windows 便携版 | `npm run dist:win` | `release/Starway-1.2.0-x64.exe`（免安装） |
+| Windows 安装包 | 同上 | `release/Starway-Setup-1.2.0-x64.exe` |
 | Ubuntu | `npm run dist:linux` | `release/starway_*.deb` |
 
 ### 为什么没有 `.deb` 文件？
@@ -34,7 +43,7 @@ npm run dev
 cd starway-pc
 npm install
 npm run dist:linux
-# 产物：release/starway_1.1.0_amd64.deb
+# 产物：release/starway_1.2.0_amd64.deb
 ```
 
 > 若本机无开发者模式导致签名工具失败，已默认 `signAndEditExecutable: false`。
@@ -47,8 +56,8 @@ npm run dist:linux
 
 路径：`starway-pc/release/`
 
-- `Starway-1.1.0-x64.exe` — 便携版，双击即用  
-- `Starway-Setup-1.1.0-x64.exe` — 安装版  
+- `Starway-1.2.0-x64.exe` — 便携版，双击即用  
+- `Starway-Setup-1.2.0-x64.exe` — 安装版  
 
 ## 功能一览
 
@@ -57,6 +66,8 @@ npm run dist:linux
 - 统计：近 7/30 天、饼图 Top5+其他
 - 四套主题、结束提示音（本地合成）、系统通知
 - 系统托盘、关闭最小化到托盘、开机自启
+- 用度：按日记账、预算账本、每月固定支出（花呗 / 订阅 / 梯子，可按月改金额、标已付）
+- 设置 → 关于：检查更新（读 GitHub Releases，可下载对应平台安装包）
 - 打包：Windows Setup.exe / Ubuntu .deb
 
 ## 技术栈

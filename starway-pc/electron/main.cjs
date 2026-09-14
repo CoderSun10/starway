@@ -10,6 +10,8 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173';
@@ -198,9 +200,95 @@ function createWindow() {
   });
 }
 
+/**
+ * 下载更新包到「下载」文件夹。GitHub 的下载地址会 302 到另一台机器，
+ * 所以要跟着跳转。返回本地路径，进度通过 update:progress 推给渲染进程。
+ */
+function downloadUpdate(url, filename, hop = 0) {
+  return new Promise((resolve, reject) => {
+    if (hop > 5) {
+      reject(new Error('跳转次数过多'));
+      return;
+    }
+    let target;
+    try {
+      target = new URL(String(url));
+    } catch {
+      reject(new Error('下载地址无效'));
+      return;
+    }
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+      reject(new Error('不支持的下载协议'));
+      return;
+    }
+
+    const safeName = String(filename || path.basename(target.pathname) || 'update')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .slice(0, 180);
+    const dest = path.join(app.getPath('downloads'), safeName);
+    const out = fs.createWriteStream(dest);
+
+    const cleanup = () => {
+      out.close(() => fs.unlink(dest, () => {}));
+    };
+
+    const mod = target.protocol === 'http:' ? http : https;
+    const req = mod.get(
+      target,
+      { headers: { 'User-Agent': 'Starway', Accept: 'application/octet-stream' } },
+      (res) => {
+        const status = res.statusCode || 0;
+        if (status >= 300 && status < 400 && res.headers.location) {
+          res.resume();
+          cleanup();
+          downloadUpdate(res.headers.location, filename, hop + 1)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+        if (status !== 200) {
+          res.resume();
+          cleanup();
+          reject(new Error(`下载失败 HTTP ${status}`));
+          return;
+        }
+
+        const total = Number(res.headers['content-length']) || 0;
+        let received = 0;
+        let lastSent = 0;
+        res.on('data', (chunk) => {
+          received += chunk.length;
+          const now = Date.now();
+          // 几十 MB 的包会触发上千次事件，按时间和百分比节流
+          if (now - lastSent < 200 && received !== total) return;
+          lastSent = now;
+          mainWindow?.webContents.send('update:progress', {
+            received,
+            total,
+            percent: total ? Math.floor((received / total) * 100) : 0,
+          });
+        });
+        res.pipe(out);
+        out.on('finish', () => {
+          out.close(() => resolve({ ok: true, path: dest, name: safeName }));
+        });
+        out.on('error', (err) => {
+          cleanup();
+          reject(err);
+        });
+      }
+    );
+    req.on('error', (err) => {
+      cleanup();
+      reject(err);
+    });
+  });
+}
+
 function registerIpc() {
   ipcMain.handle('desktop:getInfo', () => ({
     platform: process.platform,
+    version: app.getVersion(),
     versions: process.versions,
     openAtLogin: app.getLoginItemSettings().openAtLogin,
     minimizeToTray: loadPrefs().minimizeToTray,
@@ -262,6 +350,29 @@ function registerIpc() {
   ipcMain.handle('desktop:setTrayTooltip', (_e, text) => {
     if (tray) tray.setToolTip(String(text || '星程'));
     return { ok: true };
+  });
+
+  ipcMain.handle('desktop:downloadUpdate', async (_e, payload) => {
+    const { url, filename } = payload || {};
+    try {
+      return await downloadUpdate(url, filename);
+    } catch (err) {
+      return { ok: false, message: err.message || '下载失败' };
+    }
+  });
+
+  ipcMain.handle('desktop:openExternal', (_e, url) => {
+    const s = String(url || '');
+    if (!/^https?:\/\//i.test(s)) return false;
+    shell.openExternal(s);
+    return true;
+  });
+
+  ipcMain.handle('desktop:showItemInFolder', (_e, target) => {
+    const p = String(target || '');
+    if (!p || !fs.existsSync(p)) return false;
+    shell.showItemInFolder(p);
+    return true;
   });
 }
 

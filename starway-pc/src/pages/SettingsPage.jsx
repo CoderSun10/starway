@@ -7,6 +7,13 @@ import { changePassword } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { APP_NAME_FULL, APP_SLOGAN } from '../constants/brand';
 import {
+  APP_VERSION,
+  fetchLatestRelease,
+  formatSize,
+  isNewer,
+  pickAssets,
+} from '../utils/update';
+import {
   FEEDBACK_MODES,
   RINGTONE_PRESETS,
   previewFeedback,
@@ -16,6 +23,7 @@ import {
   Chip,
   Field,
   NumericInput,
+  ProgressBar,
   TextInput,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
@@ -77,6 +85,9 @@ export default function SettingsPage() {
   const [previewing, setPreviewing] = useState(false);
   const [platform, setPlatform] = useState('web');
   const [isElectron, setIsElectron] = useState(false);
+  const [update, setUpdate] = useState({ phase: 'idle' });
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [download, setDownload] = useState({ phase: 'idle' });
 
   const current = NAV.find((n) => n.id === section) || NAV[0];
 
@@ -89,6 +100,61 @@ export default function SettingsPage() {
       });
     }
   }, [hydrateDesktop]);
+
+  useEffect(() => {
+    const off = window.starwayDesktop?.onUpdateProgress?.((p) => {
+      setDownload((prev) =>
+        prev.phase === 'downloading'
+          ? { ...prev, percent: p.percent || 0, received: p.received, total: p.total }
+          : prev
+      );
+    });
+    return off;
+  }, []);
+
+  const openLink = (url) => {
+    const desktop = window.starwayDesktop;
+    if (desktop?.openExternal) desktop.openExternal(url);
+    else window.open(url, '_blank', 'noopener');
+  };
+
+  const onCheckUpdate = async () => {
+    setUpdate({ phase: 'checking' });
+    setDownload({ phase: 'idle' });
+    setUpdateOpen(true);
+    const res = await fetchLatestRelease();
+    if (res.status !== 'ok') {
+      setUpdate({ phase: 'done', status: res.status, message: res.message });
+      return;
+    }
+    const newer = isNewer(res.release.tag, APP_VERSION);
+    setUpdate({
+      phase: 'done',
+      status: newer ? 'newer' : 'latest',
+      release: res.release,
+    });
+  };
+
+  const onDownload = async (asset) => {
+    if (!asset) return;
+    const desktop = window.starwayDesktop;
+    if (!desktop?.downloadUpdate) {
+      // 浏览器里没有主进程，直接打开发布页让用户自己下
+      openLink(asset.url);
+      return;
+    }
+    setDownload({ phase: 'downloading', percent: 0 });
+    const res = await desktop.downloadUpdate({
+      url: asset.url,
+      filename: asset.name,
+    });
+    if (res?.ok) {
+      setDownload({ phase: 'done', path: res.path, name: res.name });
+      toast.success('已下载完成');
+    } else {
+      setDownload({ phase: 'failed', message: res?.message || '下载失败' });
+    }
+  };
 
   const onPreview = async () => {
     if (previewing) return;
@@ -324,19 +390,203 @@ export default function SettingsPage() {
       );
     }
 
+    const PLATFORM_LABEL = {
+      win32: 'Windows',
+      linux: 'Linux',
+      darwin: 'macOS',
+    };
+
     return (
       <div className="settings-about">
         <strong style={{ color: t.text, fontSize: 18 }}>{APP_NAME_FULL}</strong>
         <p style={{ color: t.textSecondary, margin: '6px 0 16px' }}>{APP_SLOGAN}</p>
         <Row title="版本" hint="桌面端">
-          <span style={{ color: t.text }}>1.0.0</span>
+          <span style={{ color: t.text }}>{APP_VERSION}</span>
         </Row>
         <Row title="运行平台" hint="当前窗口所在系统">
-          <span style={{ color: t.text }}>{platform}</span>
+          <span style={{ color: t.text }}>
+            {PLATFORM_LABEL[platform] || platform}
+          </span>
         </Row>
+        <Row title="检查更新" hint="到 GitHub Releases 取最新版本">
+          <Button
+            variant="ghost"
+            disabled={update.phase === 'checking'}
+            onClick={onCheckUpdate}
+          >
+            {update.phase === 'checking' ? '检查中…' : '检查更新'}
+          </Button>
+        </Row>
+
       </div>
     );
   })();
+
+  const release = update.release;
+  const assets = release ? pickAssets(release.assets, platform) : null;
+  const recommended = assets?.recommended || null;
+
+  const updateModal = updateOpen ? (
+    <div className="modal-mask" onClick={() => setUpdateOpen(false)}>
+      <div
+        className="modal"
+        style={{ background: t.bgElevated, borderColor: t.border, color: t.text }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ margin: '0 0 6px', fontSize: 18 }}>检查更新</h2>
+        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
+          当前版本 {APP_VERSION}
+        </p>
+
+        {update.phase === 'checking' ? (
+          <p style={{ color: t.textSecondary, margin: '20px 0' }}>正在检查…</p>
+        ) : null}
+
+        {update.phase === 'done' && update.status === 'latest' ? (
+          <p style={{ color: t.success, margin: '20px 0' }}>已是最新版本</p>
+        ) : null}
+
+        {update.phase === 'done' &&
+        update.status !== 'latest' &&
+        update.status !== 'newer' ? (
+          <p style={{ color: t.textSecondary, margin: '20px 0' }}>
+            {update.message}
+          </p>
+        ) : null}
+
+        {update.phase === 'done' && update.status === 'newer' ? (
+          <>
+            <p style={{ color: t.text, margin: '16px 0 0' }}>
+              有新版本 <strong>{release.name || release.tag}</strong>
+            </p>
+            {release.publishedAt ? (
+              <p
+                className="muted"
+                style={{ color: t.muted, fontSize: 12, marginTop: 4 }}
+              >
+                发布于 {release.publishedAt.slice(0, 10)}
+              </p>
+            ) : null}
+
+            <div className="row" style={{ marginTop: 16 }}>
+              {recommended ? (
+                <Button
+                  variant="accent"
+                  disabled={download.phase === 'downloading'}
+                  onClick={() => onDownload(recommended)}
+                >
+                  {download.phase === 'downloading'
+                    ? '下载中…'
+                    : `下载安装包 ${formatSize(recommended.size)}`}
+                </Button>
+              ) : (
+                <span style={{ color: t.textSecondary }}>
+                  这个平台暂时没有现成安装包
+                </span>
+              )}
+            </div>
+
+            {recommended ? (
+              <p
+                className="muted"
+                style={{ color: t.muted, fontSize: 12, marginTop: 6 }}
+              >
+                {recommended.name}
+                {isElectron ? ' · 下载到「下载」文件夹' : ' · 在浏览器里打开'}
+              </p>
+            ) : null}
+
+            {download.phase === 'downloading' ? (
+              <div style={{ marginTop: 14 }}>
+                <ProgressBar
+                  current={download.percent || 0}
+                  total={100}
+                  percent={download.percent || 0}
+                  fill={t.primary}
+                  label={`下载中 ${formatSize(download.total)}`}
+                />
+              </div>
+            ) : null}
+
+            {download.phase === 'done' ? (
+              <div className="row" style={{ marginTop: 14 }}>
+                <span style={{ color: t.success }}>已下载 {download.name}</span>
+                {window.starwayDesktop?.showItemInFolder ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      window.starwayDesktop.showItemInFolder(download.path)
+                    }
+                  >
+                    打开所在文件夹
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {download.phase === 'failed' ? (
+              <p style={{ color: t.danger, marginTop: 14 }}>
+                {download.message}
+              </p>
+            ) : null}
+
+            {assets?.others?.length ? (
+              <div style={{ marginTop: 14 }}>
+                <span style={{ color: t.muted, fontSize: 12 }}>其他下载：</span>
+                {assets.others.map((a) => (
+                  <button
+                    key={a.url}
+                    type="button"
+                    className="chip"
+                    style={{
+                      marginLeft: 6,
+                      borderColor: t.border,
+                      color: t.textSecondary,
+                      background: 'transparent',
+                    }}
+                    onClick={() => onDownload(a)}
+                  >
+                    {a.name} {formatSize(a.size)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {release.notes ? (
+              <div style={{ marginTop: 16 }}>
+                <div
+                  style={{ color: t.textSecondary, fontSize: 12, marginBottom: 6 }}
+                >
+                  更新内容
+                </div>
+                <div
+                  className="scroll-y"
+                  style={{
+                    maxHeight: 220,
+                    whiteSpace: 'pre-wrap',
+                    fontSize: 13,
+                    lineHeight: 1.65,
+                    color: t.textSecondary,
+                  }}
+                >
+                  {release.notes}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        <div
+          className="row"
+          style={{ marginTop: 20, justifyContent: 'flex-end' }}
+        >
+          <Button variant="ghost" onClick={() => setUpdateOpen(false)}>
+            关闭
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="settings-page" style={{ ['--settings-accent']: t.primary }}>
@@ -382,6 +632,7 @@ export default function SettingsPage() {
           {pane}
         </div>
       </div>
+      {updateModal}
     </div>
   );
 }

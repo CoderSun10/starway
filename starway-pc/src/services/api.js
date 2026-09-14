@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
+// API 地址由 Vite 按运行模式从 .env.development / .env.production 读取，
+// 源码里不写死 IP。改地址请改对应的 .env.* 文件。
 const DEFAULT_API = (
-  import.meta.env.VITE_API_BASE_URL || 'http://49.234.199.55:3001'
+  import.meta.env.VITE_API_BASE_URL || ''
 ).replace(/\/$/, '');
 
 export function getBaseURL() {
@@ -199,6 +201,42 @@ export async function updateExpense(id, payload) {
 export async function deleteExpense(id) {
   const { data } = await api.delete(`/api/expenses/${id}`);
   return data;
+}
+
+export async function fetchFixedExpenses(params = {}) {
+  const { data } = await api.get('/api/fixed-expenses', { params });
+  return data.data;
+}
+
+export async function fetchFixedExpenseMonth(month) {
+  const { data } = await api.get('/api/fixed-expenses/month', {
+    params: month ? { month } : {},
+  });
+  return data.data;
+}
+
+export async function createFixedExpense(payload) {
+  const { data } = await api.post('/api/fixed-expenses', payload);
+  return data.data;
+}
+
+export async function updateFixedExpense(id, payload) {
+  const { data } = await api.put(`/api/fixed-expenses/${id}`, payload);
+  return data.data;
+}
+
+export async function deleteFixedExpense(id) {
+  const { data } = await api.delete(`/api/fixed-expenses/${id}`);
+  return data;
+}
+
+/** 记某个月的实际情况：{ amount_fen?, paid?, note?, reset? } */
+export async function updateFixedExpenseMonth(id, month, payload) {
+  const { data } = await api.put(
+    `/api/fixed-expenses/${id}/month/${month}`,
+    payload
+  );
+  return data.data;
 }
 
 export default api;
