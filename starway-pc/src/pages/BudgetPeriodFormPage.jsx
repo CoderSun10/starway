@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../stores/themeStore';
 import {
   createBudgetPeriod,
@@ -21,15 +21,30 @@ import { toast } from '../stores/toastStore';
 
 export default function BudgetPeriodFormPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const qMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(searchParams.get('month') || '')
+    ? searchParams.get('month')
+    : null;
   const isEdit = !!id;
   const t = useTheme();
   const nav = useNavigate();
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(() => {
+    const mm = qMonth || todayStr().slice(0, 7);
+    const [y, m] = mm.split('-').map(Number);
+    return qMonth ? `${y}年${m}月分段` : `${y}年${m}月账本`;
+  });
   const [description, setDescription] = useState('');
-  const [startDate, setStartDate] = useState(() => `${todayStr().slice(0, 8)}01`);
-  const [endDate, setEndDate] = useState(todayStr());
+  const [startDate, setStartDate] = useState(
+    () => `${qMonth || todayStr().slice(0, 7)}-01`
+  );
+  const [endDate, setEndDate] = useState(() => {
+    const mm = qMonth || todayStr().slice(0, 7);
+    const [y, m] = mm.split('-').map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${mm}-${String(last).padStart(2, '0')}`;
+  });
   const [yuan, setYuan] = useState('3000');
 
   useEffect(() => {

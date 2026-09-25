@@ -13,6 +13,7 @@ const settingsRouter = require('./routes/settings');
 const budgetPeriodsRouter = require('./routes/budgetPeriods');
 const expensesRouter = require('./routes/expenses');
 const fixedExpensesRouter = require('./routes/fixedExpenses');
+const monthBudgetsRouter = require('./routes/monthBudgets');
 
 function createApp() {
   const app = express();
@@ -71,6 +72,8 @@ function createApp() {
         'GET/PUT /api/settings',
         'GET/POST /api/budget-periods',
         'GET/PUT/DELETE /api/budget-periods/:id',
+        'GET /api/month-budgets',
+        'PUT /api/month-budgets/:month',
         'GET/POST /api/expenses',
         'GET/PUT/DELETE /api/expenses/:id',
         'GET/POST /api/fixed-expenses',
@@ -91,6 +94,7 @@ function createApp() {
   app.use('/api/budget-periods', authRequired, budgetPeriodsRouter);
   app.use('/api/expenses', authRequired, expensesRouter);
   app.use('/api/fixed-expenses', authRequired, fixedExpensesRouter);
+  app.use('/api/month-budgets', authRequired, monthBudgetsRouter);
 
   app.use(notFound);
   app.use(errorHandler);

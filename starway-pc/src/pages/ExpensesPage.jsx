@@ -132,7 +132,7 @@ export default function ExpensesPage() {
           />
         }
       />
-      <div className="grid-2">
+      <div className="grid-2 pane-grid">
         <Card>
           <h3 style={{ margin: '0 0 8px', color: t.text }}>
             {editingId ? '修改一笔' : '记一笔'}
@@ -184,36 +184,38 @@ export default function ExpensesPage() {
           ) : list.length === 0 ? (
             <Empty title="这一天还没有记账" />
           ) : (
-            list.map((row) => (
-              <div
-                key={row.id}
-                className="row-between"
-                style={{
-                  marginBottom: 8,
-                  paddingBottom: 8,
-                  borderBottom: `1px solid ${t.border}`,
-                  color: t.text,
-                }}
-              >
-                <div>
-                  <div>{row.title}</div>
-                  <div className="muted" style={{ color: t.muted, fontSize: 12 }}>
-                    填写于 {formatDateTime(row.created_at)}
-                    {row.note ? ` · ${row.note}` : ''}
+            <div className="pane-scroll">
+              {list.map((row) => (
+                <div
+                  key={row.id}
+                  className="row-between"
+                  style={{
+                    marginBottom: 8,
+                    paddingBottom: 8,
+                    borderBottom: `1px solid ${t.border}`,
+                    color: t.text,
+                  }}
+                >
+                  <div>
+                    <div>{row.title}</div>
+                    <div className="muted" style={{ color: t.muted, fontSize: 12 }}>
+                      填写于 {formatDateTime(row.created_at)}
+                      {row.note ? ` · ${row.note}` : ''}
+                    </div>
+                  </div>
+                  <div className="row">
+                    <strong>{formatFen(row.amount_fen)}</strong>
+                    <IconButton name="edit" title="修改" onClick={() => startEdit(row)} />
+                    <IconButton
+                      name="trash"
+                      title="删除"
+                      danger
+                      onClick={() => onDelete(row)}
+                    />
                   </div>
                 </div>
-                <div className="row">
-                  <strong>{formatFen(row.amount_fen)}</strong>
-                  <IconButton name="edit" title="修改" onClick={() => startEdit(row)} />
-                  <IconButton
-                    name="trash"
-                    title="删除"
-                    danger
-                    onClick={() => onDelete(row)}
-                  />
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </Card>
       </div>

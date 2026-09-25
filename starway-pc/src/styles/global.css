@@ -518,6 +518,21 @@ svg *:focus {
   padding-top: 4px;
 }
 
+.ledger-sub-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ledger-sub-wrap.open {
+  grid-template-rows: 1fr;
+}
+
+.ledger-sub-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
 .nav-item.nav-sub {
   padding: 5px 12px 5px 36px;
   font-size: 12px;
@@ -1327,6 +1342,21 @@ svg *:focus {
   box-sizing: border-box;
 }
 
+/* 记账/固定支出页：两栏固定等高，列表内部滚动，不随内容撑高 */
+.pane-grid > .card {
+  height: calc(100vh - 250px);
+  min-height: 340px;
+  max-height: 720px;
+}
+
+.pane-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
 /* KPI 三卡：强制同宽同高（不靠内容撑） */
 .kpi-row {
   display: grid;
@@ -1642,10 +1672,29 @@ svg *:focus {
   justify-content: center;
   z-index: 900;
   padding: 24px;
+  animation: modalMaskIn 0.18s ease-out;
+}
+
+@keyframes modalMaskIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .modal {
   width: min(480px, 100%);
+  animation: modalIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
   max-height: 90vh;
   overflow: auto;
   border-radius: 16px;

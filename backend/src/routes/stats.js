@@ -7,6 +7,12 @@ const {
   inclusiveDayCount,
   eachUtcDate,
 } = require('../utils/timeLogic');
+const {
+  shiftDay,
+  mondayOf,
+  fixedSpendInRange,
+  fixedSpendByDayInRange,
+} = require('../utils/fixedSpend');
 
 const router = express.Router();
 
@@ -15,51 +21,6 @@ function httpError(status, message, code) {
   err.status = status;
   err.code = code;
   return err;
-}
-
-/** 该日期所在周的周一（北京日历日） */
-function mondayOf(ymd) {
-  const [y, m, d] = String(ymd).split('-').map(Number);
-  const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
-  return shiftDay(ymd, -dow);
-}
-
-/**
- * 区间内固定支出的合计。
- * 按「涉及到的月份 × 每个启用项」展开：已付的记在付款日，其余记在当月应扣日，
- * 某月没记过也按预计值计入。
- */
-async function fixedSpendInRange(uid, fromDay, toDay) {
-  if (!fromDay || !toDay || fromDay > toDay) return 0;
-  const months = monthsBetween(fromDay, toDay);
-  if (!months.length) return 0;
-  const monthSelect = months.map(() => 'SELECT ? AS month').join(' UNION ALL ');
-  const rows = await query(
-    `SELECT COALESCE(SUM(x.amount_fen), 0) AS total_fen
-     FROM (
-       SELECT COALESCE(
-                r.paid_date,
-                DATE_ADD(
-                  STR_TO_DATE(CONCAT(m.month, '-01'), '%Y-%m-%d'),
-                  INTERVAL LEAST(
-                    t.due_day,
-                    DAY(LAST_DAY(CONCAT(m.month, '-01')))
-                  ) - 1 DAY
-                )
-              ) AS day,
-              COALESCE(r.amount_fen, t.expected_amount_fen) AS amount_fen
-       FROM fixed_expenses t
-       JOIN (${monthSelect}) m
-       LEFT JOIN fixed_expense_records r
-         ON r.fixed_expense_id = t.id
-        AND r.billing_month = m.month
-        AND r.user_id = t.user_id
-       WHERE t.user_id = ? AND t.enabled = 1
-     ) x
-     WHERE x.day >= ? AND x.day <= ?`,
-    [...months, uid, fromDay, toDay]
-  );
-  return Number(rows[0].total_fen);
 }
 
 /** 单日统计的空白形状。fixed_fen 单独给出来，前端好把它叠在柱子上 */
@@ -72,29 +33,6 @@ function emptyDay(day) {
     fixed_fen: 0,
     expense_count: 0,
   };
-}
-
-/** YYYY-MM-DD 往前/后挪 n 天 */
-function shiftDay(ymd, n) {
-  const [y, m, d] = String(ymd).split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  return dt.toISOString().slice(0, 10);
-}
-
-/** 闭区间涉及到的北京日历月，如 2026-08-15~2026-09-14 → ['2026-08','2026-09'] */
-function monthsBetween(fromYmd, toYmd) {
-  const out = [];
-  let [y, m] = String(fromYmd).split('-').map(Number);
-  const [ty, tm] = String(toYmd).split('-').map(Number);
-  while (y < ty || (y === ty && m <= tm)) {
-    out.push(`${y}-${String(m).padStart(2, '0')}`);
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  return out;
 }
 
 /**
@@ -286,13 +224,26 @@ router.get(
   })
 );
 
-// GET /api/stats/daily?days=7|30
+// GET /api/stats/daily?days=7|30 或 ?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get(
   '/daily',
   asyncHandler(async (req, res) => {
     const uid = userId(req);
-    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
-    const today = req.query.today; // YYYY-MM-DD 上海/本地今天
+    let days;
+    const qFrom = parseYmd(req.query.from);
+    const qTo = parseYmd(req.query.to);
+    if (qFrom || qTo) {
+      if (!qFrom || !qTo) {
+        throw httpError(400, 'from 与 to 必须同时提供', 'INCOMPLETE_RANGE');
+      }
+      days = inclusiveDayCount(qFrom, qTo);
+      if (days == null || days < 1 || days > 365) {
+        throw httpError(400, 'from/to 须为合法日期且闭区间 1–365 天', 'VALIDATION_ERROR');
+      }
+    } else {
+      days = Math.min(Math.max(Number(req.query.days) || 7, 1), 365);
+    }
+    const today = qTo || req.query.today; // YYYY-MM-DD 上海/本地今天（区间模式以 to 为基准日）
     // 是否把每月固定支出也算进当天花费
     const includeFixed = String(req.query.include_fixed || '') === '1';
 
@@ -343,50 +294,17 @@ router.get(
       map[key].expense_count = Number(r.expense_count);
     }
 
-    // 固定支出：已付的记在付款日，其余记在当月应扣日（31 号遇小月顺延到月底）。
-    // 按「涉及到的月份 × 每个启用项」展开，所以某月没记过也会按预计值计入，
-    // 结果和「固定支出」页的本月合计一致。
+    // 固定支出按天并入（口径见 utils/fixedSpend）
     if (includeFixed) {
       const baseDay =
         today ||
         new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
       const fromDay = shiftDay(baseDay, -(days - 1));
-      const months = monthsBetween(fromDay, baseDay);
-      const monthSelect = months.map(() => 'SELECT ? AS month').join(' UNION ALL ');
-      const fixedRows = await query(
-        `SELECT x.day,
-                COALESCE(SUM(x.amount_fen), 0) AS spend_fen,
-                COUNT(*) AS expense_count
-         FROM (
-           SELECT COALESCE(
-                    r.paid_date,
-                    DATE_ADD(
-                      STR_TO_DATE(CONCAT(m.month, '-01'), '%Y-%m-%d'),
-                      INTERVAL LEAST(
-                        t.due_day,
-                        DAY(LAST_DAY(CONCAT(m.month, '-01')))
-                      ) - 1 DAY
-                    )
-                  ) AS day,
-                  COALESCE(r.amount_fen, t.expected_amount_fen) AS amount_fen
-           FROM fixed_expenses t
-           JOIN (${monthSelect}) m
-           LEFT JOIN fixed_expense_records r
-             ON r.fixed_expense_id = t.id
-            AND r.billing_month = m.month
-            AND r.user_id = t.user_id
-           WHERE t.user_id = ? AND t.enabled = 1
-         ) x
-         WHERE x.day >= ? AND x.day <= ?
-         GROUP BY x.day`,
-        [...months, uid, fromDay, baseDay]
-      );
-      for (const r of fixedRows) {
-        const key = typeof r.day === 'string' ? r.day.slice(0, 10) : String(r.day).slice(0, 10);
-        if (!map[key]) map[key] = emptyDay(key);
-        map[key].fixed_fen += Number(r.spend_fen);
-        map[key].spend_fen += Number(r.spend_fen);
-        map[key].expense_count += Number(r.expense_count);
+      for (const r of await fixedSpendByDayInRange(uid, fromDay, baseDay)) {
+        if (!map[r.day]) map[r.day] = emptyDay(r.day);
+        map[r.day].fixed_fen += r.spend_fen;
+        map[r.day].spend_fen += r.spend_fen;
+        map[r.day].expense_count += r.expense_count;
       }
     }
 
@@ -473,23 +391,40 @@ router.get(
   })
 );
 
-// GET /api/stats/by-schedule?days=7|30&today=YYYY-MM-DD
-// 仅统计近 N 天，避免历史计划无限堆进饼图
+// GET /api/stats/by-schedule?days=7|30&today=YYYY-MM-DD 或 ?from=&to=
+// 仅统计选定区间，避免历史计划无限堆进饼图
 router.get(
   '/by-schedule',
   asyncHandler(async (req, res) => {
     const uid = userId(req);
-    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+    const qFrom = parseYmd(req.query.from);
+    const qTo = parseYmd(req.query.to);
     const today = req.query.today; // YYYY-MM-DD
 
-    const dayFilter = today
-      ? `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
+    let dayFilter;
+    let params;
+    if (qFrom || qTo) {
+      if (!qFrom || !qTo) {
+        throw httpError(400, 'from 与 to 必须同时提供', 'INCOMPLETE_RANGE');
+      }
+      const span = inclusiveDayCount(qFrom, qTo);
+      if (span == null || span < 1 || span > 365) {
+        throw httpError(400, 'from/to 须为合法日期且闭区间 1–365 天', 'VALIDATION_ERROR');
+      }
+      dayFilter = `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00")) >= ?
+             AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00")) <= ?`;
+      params = [uid, qFrom, qTo];
+    } else {
+      const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+      dayFilter = today
+        ? `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
              >= DATE_SUB(STR_TO_DATE(?, "%Y-%m-%d"), INTERVAL ? DAY)
          AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
              <= STR_TO_DATE(?, "%Y-%m-%d")`
-      : `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
+        : `AND DATE(CONVERT_TZ(s.started_at, "+00:00", "+08:00"))
              >= DATE_SUB(DATE(CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00")), INTERVAL ? DAY)`;
-    const params = today ? [uid, today, days - 1, today] : [uid, days - 1];
+      params = today ? [uid, today, days - 1, today] : [uid, days - 1];
+    }
 
     const rows = await query(
       `SELECT

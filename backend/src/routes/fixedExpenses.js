@@ -49,6 +49,9 @@ function parseItemBody(body) {
   if (!title || title.length > 200) {
     throw httpError(400, '名称须为 1–200 字', 'VALIDATION_ERROR');
   }
+  let billing_month = body.billing_month;
+  if (billing_month == null || billing_month === '') billing_month = currentMonth();
+  else billing_month = requireMonth(billing_month, 'billing_month');
   let category = String(body.category ?? '').trim();
   if (!category) category = '其他';
   if (category.length > 50) throw httpError(400, '分类过长', 'VALIDATION_ERROR');
@@ -72,6 +75,7 @@ function parseItemBody(body) {
 
   return {
     title,
+    billing_month,
     category,
     expected_amount_fen,
     due_day: due,
@@ -84,6 +88,7 @@ function parseItemBody(body) {
 function shapeItem(row) {
   return {
     id: Number(row.id),
+    billing_month: row.billing_month,
     title: row.title,
     category: row.category,
     expected_amount_fen: Number(row.expected_amount_fen),
@@ -128,13 +133,13 @@ const MONTH_SELECT = `
   LEFT JOIN fixed_expense_records r
     ON r.fixed_expense_id = t.id
    AND r.billing_month = ?
-  WHERE t.user_id = ?
+  WHERE t.user_id = ? AND t.billing_month = ?
 `;
 
 const MONTH_ORDER = ' ORDER BY t.sort_order ASC, t.id ASC';
 
 async function loadItems(uid, month) {
-  const rows = await query(`${MONTH_SELECT}${MONTH_ORDER}`, [month, uid]);
+  const rows = await query(`${MONTH_SELECT}${MONTH_ORDER}`, [month, uid, month]);
   return rows.map((r) => shapeMonthItem(r, month));
 }
 
@@ -157,6 +162,7 @@ async function fetchItemRow(uid, id, month) {
   const rows = await query(`${MONTH_SELECT} AND t.id = ?${MONTH_ORDER}`, [
     month,
     uid,
+    month,
     id,
   ]);
   if (!rows.length) {
@@ -172,6 +178,10 @@ router.get(
     const { enabled, q, month } = req.query;
     let sql = 'SELECT * FROM fixed_expenses WHERE user_id = ?';
     const params = [uid];
+    if (month) {
+      sql += ' AND billing_month = ?';
+      params.push(requireMonth(month));
+    }
     if (enabled === '1' || enabled === '0') {
       sql += ' AND enabled = ?';
       params.push(Number(enabled));
@@ -225,10 +235,11 @@ router.post(
     );
     const result = await query(
       `INSERT INTO fixed_expenses
-        (user_id, title, category, expected_amount_fen, due_day, auto_pay, enabled, note, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (user_id, billing_month, title, category, expected_amount_fen, due_day, auto_pay, enabled, note, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         uid,
+        body.billing_month,
         body.title,
         body.category,
         body.expected_amount_fen,
@@ -260,10 +271,11 @@ router.put(
     const body = parseItemBody(req.body || {});
     await query(
       `UPDATE fixed_expenses
-       SET title = ?, category = ?, expected_amount_fen = ?, due_day = ?,
+       SET billing_month = ?, title = ?, category = ?, expected_amount_fen = ?, due_day = ?,
            auto_pay = ?, enabled = ?, note = ?
        WHERE id = ? AND user_id = ?`,
       [
+        body.billing_month,
         body.title,
         body.category,
         body.expected_amount_fen,
@@ -321,6 +333,9 @@ router.put(
       throw httpError(404, '固定支出不存在', 'FIXED_EXPENSE_NOT_FOUND');
     }
     const template = templateRows[0];
+    if (template.billing_month && template.billing_month !== month) {
+      throw httpError(400, '该支出属于其他月份', 'MONTH_MISMATCH');
+    }
 
     const recordRows = await query(
       `SELECT * FROM fixed_expense_records

@@ -3,10 +3,11 @@ import { useTheme } from '../stores/themeStore';
 import {
   createFixedExpense,
   deleteFixedExpense,
-  fetchFixedExpenses,
+  fetchFixedExpenseMonth,
   updateFixedExpense,
 } from '../services/api';
 import { fenToYuanString, formatFen, yuanToFen } from '../utils/money';
+import { todayStr } from '../utils/time';
 import {
   Button,
   Card,
@@ -22,7 +23,9 @@ import { toast } from '../stores/toastStore';
 
 export default function FixedExpensesPage() {
   const t = useTheme();
+  const [month, setMonth] = useState(() => todayStr().slice(0, 7));
   const [items, setItems] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [editingId, setEditingId] = useState(null);
@@ -42,22 +45,19 @@ export default function FixedExpensesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchFixedExpenses();
-      setItems(data.list || []);
+      const data = await fetchFixedExpenseMonth(month);
+      setItems(data.items || []);
+      setSummary(data.summary || null);
     } catch (e) {
       toast.error('加载固定支出失败', e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  const total = items
-    .filter((x) => x.enabled)
-    .reduce((s, x) => s + x.expected_amount_fen, 0);
 
   function resetForm() {
     setEditingId(null);
@@ -99,6 +99,7 @@ export default function FixedExpensesPage() {
     setSaving(true);
     try {
       const payload = {
+        billing_month: month,
         title: title.trim(),
         expected_amount_fen: fen,
         due_day: day,
@@ -133,12 +134,26 @@ export default function FixedExpensesPage() {
 
   return (
     <div>
-      <PageHeader title="固定支出" sub="每月都要花的钱，和按日记账分开算" />
+      <PageHeader
+        title="固定支出"
+        sub="当月要花的固定钱，按每个月单独填写"
+        right={
+          <TextInput
+            type="month"
+            value={month}
+            onChange={(e) => {
+              setMonth(e.target.value || todayStr().slice(0, 7));
+              resetForm();
+            }}
+            style={{ maxWidth: 160 }}
+          />
+        }
+      />
 
-      <div className="grid-2">
+      <div className="grid-2 pane-grid">
         <Card>
           <h3 style={{ margin: '0 0 10px', color: t.text }}>
-            {editingId ? '修改' : '新增'}
+            {editingId ? '修改' : `新增（${month} 月）`}
           </h3>
           <form onSubmit={onSubmit}>
             <Field label="名称">
@@ -148,7 +163,7 @@ export default function FixedExpensesPage() {
                 placeholder="grok会员订阅"
               />
             </Field>
-            <Field label="每月金额（元）">
+            <Field label="当月金额（元）">
               <NumericInput
                 integer={false}
                 min={0.01}
@@ -176,45 +191,58 @@ export default function FixedExpensesPage() {
 
         <Card>
           <div className="row-between" style={{ marginBottom: 10 }}>
-            <h3 style={{ margin: 0, color: t.text }}>清单</h3>
-            <strong style={{ color: t.accent }}>{formatFen(total)}</strong>
+            <h3 style={{ margin: 0, color: t.text }}>{month} 清单</h3>
+            <strong style={{ color: t.accent }}>
+              {formatFen(summary?.total_fen ?? 0)}
+            </strong>
           </div>
+          {summary ? (
+            <div
+              className="muted"
+              style={{ color: t.textSecondary, fontSize: 12, marginBottom: 10 }}
+            >
+              共 {summary.item_count} 项 · 写进来就算本月已花
+            </div>
+          ) : null}
           {loading ? (
             <Loading />
           ) : items.length === 0 ? (
-            <Empty title="还没有固定支出" subtitle="把每月必花的钱加进来" />
+            <Empty title="这个月还没有固定支出" subtitle="当月要花的钱单独填一份" />
           ) : (
-            items.map((row) => (
-              <div
-                key={row.id}
-                className="row-between"
-                style={{
-                  marginBottom: 8,
-                  paddingBottom: 8,
-                  borderBottom: `1px solid ${t.border}`,
-                  color: t.text,
-                  opacity: row.enabled ? 1 : 0.5,
-                }}
-              >
-                <div>
-                  <div>{row.title}</div>
-                  <div className="muted" style={{ color: t.muted, fontSize: 12 }}>
-                    每月 {row.due_day} 号
-                    {row.enabled ? '' : ' · 已停用'}
+            <div className="pane-scroll">
+              {items.map((row) => (
+                <div
+                  key={row.id}
+                  className="row-between"
+                  style={{
+                    marginBottom: 8,
+                    paddingBottom: 8,
+                    borderBottom: `1px solid ${t.border}`,
+                    color: t.text,
+                    opacity: row.enabled ? 1 : 0.5,
+                  }}
+                >
+                  <div>
+                    <div>{row.title}</div>
+                    <div className="muted" style={{ color: t.muted, fontSize: 12 }}>
+                      {row.due_date} 扣款
+                      {row.overridden ? ' · 金额与预计不同' : ''}
+                      {row.enabled ? '' : ' · 已停用'}
+                    </div>
+                  </div>
+                  <div className="row">
+                    <strong>{formatFen(row.amount_fen)}</strong>
+                    <IconButton name="edit" title="修改" onClick={() => startEdit(row)} />
+                    <IconButton
+                      name="trash"
+                      title="删除"
+                      danger
+                      onClick={() => onDelete(row)}
+                    />
                   </div>
                 </div>
-                <div className="row">
-                  <strong>{formatFen(row.expected_amount_fen)}</strong>
-                  <IconButton name="edit" title="修改" onClick={() => startEdit(row)} />
-                  <IconButton
-                    name="trash"
-                    title="删除"
-                    danger
-                    onClick={() => onDelete(row)}
-                  />
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </Card>
       </div>

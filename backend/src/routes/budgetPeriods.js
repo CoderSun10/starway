@@ -3,6 +3,7 @@ const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
 const { parseYmd, inclusiveDayCount, eachUtcDate } = require('../utils/timeLogic');
 const { parseAmountFen } = require('../utils/money');
+const { fixedSpendByDayInRange } = require('../utils/fixedSpend');
 const { userId } = require('../middleware/auth');
 
 const router = express.Router();
@@ -71,6 +72,8 @@ async function attachSpent(ids, uid) {
   const placeholders = ids.map(() => '?').join(',');
   const rows = await query(
     `SELECT p2.id AS period_id,
+            p2.start_date,
+            p2.end_date,
             COALESCE(SUM(e.amount_fen), 0) AS spent_fen,
             COUNT(e.id) AS expense_count
      FROM budget_periods p2
@@ -81,10 +84,29 @@ async function attachSpent(ids, uid) {
      GROUP BY p2.id`,
     [uid, ...ids]
   );
+  // 账本的花费把区间内归属的固定支出也计入：
+  // 先取覆盖所有时段的固定支出按天分布，再按各时段区间分别加总
+  let minStart = null;
+  let maxEnd = null;
+  for (const r of rows) {
+    const s = String(r.start_date).slice(0, 10);
+    const e = String(r.end_date).slice(0, 10);
+    if (!minStart || s < minStart) minStart = s;
+    if (!maxEnd || e > maxEnd) maxEnd = e;
+  }
+  const fixedDays = minStart
+    ? await fixedSpendByDayInRange(uid, minStart, maxEnd)
+    : [];
   const map = {};
   for (const r of rows) {
+    const s = String(r.start_date).slice(0, 10);
+    const e = String(r.end_date).slice(0, 10);
+    const fixed = fixedDays.reduce(
+      (sum, d) => (d.day >= s && d.day <= e ? sum + d.spend_fen : sum),
+      0
+    );
     map[Number(r.period_id)] = {
-      spent_fen: Number(r.spent_fen),
+      spent_fen: Number(r.spent_fen) + fixed,
       expense_count: Number(r.expense_count),
     };
   }

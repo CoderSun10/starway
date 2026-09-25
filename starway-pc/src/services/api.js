@@ -183,6 +183,19 @@ export async function deleteBudgetPeriod(id) {
   return data;
 }
 
+export async function fetchMonthBudgets(months) {
+  const params = months && months.length ? { months: months.join(',') } : {};
+  const { data } = await api.get('/api/month-budgets', { params });
+  return data.data;
+}
+
+export async function upsertMonthBudget(month, plannedAmountFen) {
+  const { data } = await api.put(`/api/month-budgets/${month}`, {
+    planned_amount_fen: plannedAmountFen,
+  });
+  return data.data;
+}
+
 export async function fetchExpenses(params = {}) {
   const { data } = await api.get('/api/expenses', { params });
   return data.data;

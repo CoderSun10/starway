@@ -16,7 +16,7 @@ import {
 import {
   FEEDBACK_MODES,
   RINGTONE_PRESETS,
-  previewFeedback,
+  previewFull,
 } from '../utils/feedback';
 import {
   Button,
@@ -27,6 +27,7 @@ import {
   TextInput,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
+import { RELEASE_NOTES } from '../constants/changelog';
 
 const NAV = [
   { id: 'account', label: '账号', hint: '登录与密码' },
@@ -87,9 +88,15 @@ export default function SettingsPage() {
   const [isElectron, setIsElectron] = useState(false);
   const [update, setUpdate] = useState({ phase: 'idle' });
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [download, setDownload] = useState({ phase: 'idle' });
 
   const current = NAV.find((n) => n.id === section) || NAV[0];
+
+  // 「关闭」选项已下线：旧配置是 none 的话迁移成 both
+  useEffect(() => {
+    if (feedbackMode === 'none') setFeedbackMode('both');
+  }, [feedbackMode, setFeedbackMode]);
 
   useEffect(() => {
     hydrateDesktop();
@@ -156,18 +163,18 @@ export default function SettingsPage() {
     }
   };
 
-  const onPreview = async () => {
+  const onPreviewFull = async () => {
     if (previewing) return;
     setPreviewing(true);
     try {
-      const r = await previewFeedback({ mode: feedbackMode, ringtoneId });
-      if (feedbackMode !== 'none' && feedbackMode !== 'notify' && r?.soundOk === false) {
-        toast.error('铃声播放失败');
+      const r = await previewFull({ ringtoneId });
+      if (!r.soundOk && !r.notified) {
+        toast.error('提醒不可用', '声音和系统通知都没能发出');
       } else {
-        toast.success('已试听当前效果');
+        toast.success('已体验提醒', r.notified ? '含系统通知' : '系统通知不可用');
       }
     } catch (e) {
-      toast.error('试听失败', e?.message);
+      toast.error('体验失败', e?.message);
     } finally {
       setPreviewing(false);
     }
@@ -317,7 +324,7 @@ export default function SettingsPage() {
           </p>
           <Row title="提醒方式" hint="声音、系统通知，或两者一起">
             <div className="chip-row">
-              {FEEDBACK_MODES.map((m) => (
+              {FEEDBACK_MODES.filter((m) => m.id !== 'none').map((m) => (
                 <Chip
                   key={m.id}
                   active={feedbackMode === m.id}
@@ -343,13 +350,11 @@ export default function SettingsPage() {
               </div>
             </Row>
           )}
-          {feedbackMode !== 'none' ? (
-            <Row title="试听" hint="按当前方式和铃声播一次">
-              <Button variant="ghost" onClick={onPreview} disabled={previewing}>
-                {previewing ? '试听中…' : '试听'}
-              </Button>
-            </Row>
-          ) : null}
+          <Row title="体验" hint="铃声和系统通知都各来一遍">
+            <Button variant="ghost" onClick={onPreviewFull} disabled={previewing}>
+              {previewing ? '体验中…' : '体验'}
+            </Button>
+          </Row>
         </>
       );
     }
@@ -400,8 +405,24 @@ export default function SettingsPage() {
       <div className="settings-about">
         <strong style={{ color: t.text, fontSize: 18 }}>{APP_NAME_FULL}</strong>
         <p style={{ color: t.textSecondary, margin: '6px 0 16px' }}>{APP_SLOGAN}</p>
-        <Row title="版本" hint="桌面端">
-          <span style={{ color: t.text }}>{APP_VERSION}</span>
+        <Row title="版本" hint="点击查看本次更新内容">
+          <button
+            type="button"
+            onClick={() => setNotesOpen(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: t.primary,
+              fontWeight: 700,
+              fontSize: 'inherit',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+            }}
+          >
+            {APP_VERSION}
+          </button>
         </Row>
         <Row title="运行平台" hint="当前窗口所在系统">
           <span style={{ color: t.text }}>
@@ -417,7 +438,6 @@ export default function SettingsPage() {
             {update.phase === 'checking' ? '检查中…' : '检查更新'}
           </Button>
         </Row>
-
       </div>
     );
   })();
@@ -588,6 +608,40 @@ export default function SettingsPage() {
     </div>
   ) : null;
 
+  const notes = RELEASE_NOTES.find((n) => n.version === APP_VERSION) || RELEASE_NOTES[0];
+  const notesModal = notesOpen && notes ? (
+    <div className="modal-mask" onClick={() => setNotesOpen(false)}>
+      <div
+        className="modal"
+        style={{ background: t.bgElevated, borderColor: t.border, color: t.text }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ margin: '0 0 6px', fontSize: 18 }}>本次更新</h2>
+        <p className="muted" style={{ color: t.textSecondary, marginTop: 0 }}>
+          v{notes.version}
+        </p>
+        <ul
+          style={{
+            color: t.textSecondary,
+            fontSize: 13,
+            lineHeight: 1.9,
+            margin: '14px 0 0',
+            paddingLeft: 18,
+          }}
+        >
+          {notes.items.map((it) => (
+            <li key={it}>{it}</li>
+          ))}
+        </ul>
+        <div className="row" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={() => setNotesOpen(false)}>
+            关闭
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="settings-page" style={{ ['--settings-accent']: t.primary }}>
       <div className="settings-head">
@@ -633,6 +687,7 @@ export default function SettingsPage() {
         </div>
       </div>
       {updateModal}
+      {notesModal}
     </div>
   );
 }

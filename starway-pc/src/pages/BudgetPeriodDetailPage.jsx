@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../stores/themeStore';
 import { deleteBudgetPeriod, fetchBudgetPeriod } from '../services/api';
@@ -13,18 +13,21 @@ export default function BudgetPeriodDetailPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setData(await fetchBudgetPeriod(id));
-      } catch (e) {
-        toast.error('加载失败', e.message);
-        nav('/ledger');
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      setData(await fetchBudgetPeriod(id));
+    } catch (e) {
+      toast.error('加载失败', e.message);
+      nav('/ledger');
+    } finally {
+      setLoading(false);
+    }
   }, [id, nav]);
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+  }, [load]);
 
   async function onDelete() {
     if (!window.confirm('删除此时段？已记账的支出仍会留在日历上。')) return;
@@ -66,7 +69,7 @@ export default function BudgetPeriodDetailPage() {
             data.overspent
               ? ` · 已超支 ${formatFen(data.spent_fen - data.planned_amount_fen)}`
               : ''
-          }`}
+          }（含固定支出）`}
         />
         <p className="muted" style={{ color: t.muted, marginTop: 10 }}>
           {data.expense_count} 笔 · 剩余 {formatFen(data.remaining_fen)}

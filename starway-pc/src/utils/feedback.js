@@ -145,7 +145,12 @@ export async function playFinishFeedback(options = {}) {
   return { soundOk };
 }
 
-/** 设置页试听 */
-export async function previewFeedback({ mode, ringtoneId }) {
-  return playFinishFeedback({ mode, ringtoneId });
+/** 设置页体验：不管选了哪种提醒方式，铃声和系统通知都各来一遍 */
+export async function previewFull({ ringtoneId } = {}) {
+  const r = await playRingtone(ringtoneId);
+  const notified = await showSystemNotification(
+    '专注时间结束',
+    '这是星程的提醒预览：计时结束时你会看到这样的通知。'
+  );
+  return { soundOk: !!r.ok, notified };
 }

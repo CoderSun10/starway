@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -39,6 +39,7 @@ import {
   IconButton,
   Loading,
   PageHeader,
+  TextInput,
 } from '../components/ui';
 import { toast } from '../stores/toastStore';
 import ContextMenu from '../components/ContextMenu';
@@ -47,6 +48,20 @@ const PIE_TOP = 5;
 const CHART_H = 260;
 /** 最近会话条数（按时间倒序最新 N 条，不是按天） */
 const SESSION_PAGE = 20;
+
+/** YYYY-MM-DD 平移 n 天 */
+function shiftYmd(ymd, n) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** 该北京日历日所在周的周一 */
+function mondayOfYmd(ymd) {
+  const dow = (new Date(`${ymd}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return shiftYmd(ymd, -dow);
+}
 
 function Mins({ value }) {
   const m = Number(value) || 0;
@@ -203,7 +218,12 @@ export default function StatsPage({ mode = 'focus' }) {
   const t = useTheme();
   const includeFixed = useSettingsStore((s) => s.statsIncludeFixed);
   const setIncludeFixed = useSettingsStore((s) => s.setStatsIncludeFixed);
-  const [days, setDays] = useState(7);
+  // 图表时段：week=本周 month=本月 d7=近7天 d30=近30天 custom=自定义
+  const [rangeKey, setRangeKey] = useState('week');
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState(() => shiftYmd(todayStr(), -13));
+  const [customTo, setCustomTo] = useState(todayStr());
+  const [customDraft, setCustomDraft] = useState({ from: '', to: '' });
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState(null);
   const [daily, setDaily] = useState([]);
@@ -217,22 +237,62 @@ export default function StatsPage({ mode = 'focus' }) {
   const pieActive = pieHover ?? pieSelected;
   // 右键菜单坐标；为 null 表示没打开
   const [menu, setMenu] = useState(null);
+  const moreRef = useRef(null);
+
+  // 点「更多」下拉外部时收起
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const onDown = (e) => {
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setMoreOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [moreOpen]);
+
+  const today = todayStr();
+  const range = useMemo(() => {
+    if (rangeKey === 'month') {
+      // 整月框架：1 号到月末，未来日期留空不截断
+      const [y, m] = today.slice(0, 7).split('-').map(Number);
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      return {
+        from: `${today.slice(0, 7)}-01`,
+        to: `${today.slice(0, 7)}-${String(last).padStart(2, '0')}`,
+        label: '本月',
+      };
+    }
+    if (rangeKey === 'd7') {
+      return { from: shiftYmd(today, -6), to: today, label: '近 7 天' };
+    }
+    if (rangeKey === 'd30') {
+      return { from: shiftYmd(today, -29), to: today, label: '近 30 天' };
+    }
+    if (rangeKey === 'custom') {
+      return { from: customFrom, to: customTo, label: '自定义' };
+    }
+    // 本周：周一到周日完整 7 天
+    const mon = mondayOfYmd(today);
+    return { from: mon, to: shiftYmd(mon, 6), label: '本周' };
+  }, [rangeKey, today, customFrom, customTo]);
 
   const load = useCallback(async () => {
-    const today = todayStr();
+    const todayLocal = todayStr();
     try {
       const [ov, d, bs, page] = await Promise.all([
         fetchOverview({
-          today,
+          today: todayLocal,
           ...(isMoney && includeFixed ? { include_fixed: 1 } : {}),
         }),
         fetchDailyStats({
-          days,
-          today,
+          from: range.from,
+          to: range.to,
+          today: todayLocal,
           // 固定支出只影响花费，专注统计用不到
           ...(isMoney && includeFixed ? { include_fixed: 1 } : {}),
         }),
-        fetchBySchedule({ days, today }),
+        fetchBySchedule({ from: range.from, to: range.to, today: todayLocal }),
         fetchSessionsPaged({ limit: SESSION_PAGE }),
       ]);
       setOverview(ov);
@@ -246,7 +306,7 @@ export default function StatsPage({ mode = 'focus' }) {
     } finally {
       setLoading(false);
     }
-  }, [days, isMoney, includeFixed]);
+  }, [range.from, range.to, isMoney, includeFixed]);
 
   async function loadMoreSessions() {
     const next = sessionLimit + SESSION_PAGE;
@@ -384,8 +444,8 @@ export default function StatsPage({ mode = 'focus' }) {
         title={isMoney ? '用度统计' : '专注统计'}
         sub={
           isMoney
-            ? `近 ${days} 天花费`
-            : `图表：近 ${days} 天 · 会话可加载更多`
+            ? `${range.label}花费（${range.from} ~ ${range.to}）`
+            : `图表：${range.label} ${range.from} ~ ${range.to} · 会话可加载更多`
         }
         right={
           isMoney ? (
@@ -450,12 +510,123 @@ export default function StatsPage({ mode = 'focus' }) {
       </div>
       )}
 
-      <div className="chip-row" style={{ marginBottom: 14 }}>
-        {[7, 30].map((d) => (
-          <Chip key={d} active={days === d} onClick={() => setDays(d)}>
-            近 {d} 天
+      <div className="chip-row" style={{ marginBottom: 14, alignItems: 'center' }}>
+        <Chip
+          active={rangeKey === 'week'}
+          onClick={() => {
+            setRangeKey('week');
+            setMoreOpen(false);
+          }}
+        >
+          本周
+        </Chip>
+        <Chip
+          active={rangeKey === 'month'}
+          onClick={() => {
+            setRangeKey('month');
+            setMoreOpen(false);
+          }}
+        >
+          本月
+        </Chip>
+        <span style={{ flex: 1 }} />
+        <div ref={moreRef} style={{ position: 'relative' }}>
+          <Chip
+            active={moreOpen || ['d7', 'd30', 'custom'].includes(rangeKey)}
+            onClick={() => {
+              setCustomDraft({ from: customFrom, to: customTo });
+              setMoreOpen((v) => !v);
+            }}
+          >
+            {['d7', 'd30', 'custom'].includes(rangeKey) ? range.label : '更多'}
           </Chip>
-        ))}
+          {moreOpen ? (
+            <div
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 'calc(100% + 6px)',
+                zIndex: 60,
+                minWidth: 230,
+                padding: 6,
+                borderRadius: 10,
+                border: `1px solid ${t.border}`,
+                background: t.bgElevated,
+                boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+              }}
+            >
+              {[
+                { k: 'd7', label: '近 7 天' },
+                { k: 'd30', label: '近 30 天' },
+              ].map((o) => (
+                <button
+                  key={o.k}
+                  type="button"
+                  className="ctx-item"
+                  style={{ color: t.text }}
+                  onClick={() => {
+                    setRangeKey(o.k);
+                    setMoreOpen(false);
+                  }}
+                >
+                  <span>{o.label}</span>
+                  {rangeKey === o.k ? (
+                    <span className="ctx-hint">当前</span>
+                  ) : null}
+                </button>
+              ))}
+              <div
+                style={{
+                  borderTop: `1px solid ${t.border}`,
+                  margin: '6px 0',
+                }}
+              />
+              <div
+                className="muted"
+                style={{ color: t.textSecondary, fontSize: 12, padding: '0 10px 6px' }}
+              >
+                自定义时长
+              </div>
+              <div style={{ display: 'flex', gap: 6, padding: '0 6px' }}>
+                <TextInput
+                  type="date"
+                  value={customDraft.from}
+                  onChange={(e) =>
+                    setCustomDraft((d) => ({ ...d, from: e.target.value }))
+                  }
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <TextInput
+                  type="date"
+                  value={customDraft.to}
+                  onChange={(e) =>
+                    setCustomDraft((d) => ({ ...d, to: e.target.value }))
+                  }
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              </div>
+              <div style={{ padding: '6px 6px 2px' }}>
+                <Button
+                  variant="accent"
+                  style={{ width: '100%' }}
+                  onClick={() => {
+                    const { from, to } = customDraft;
+                    if (!from || !to || from > to) {
+                      toast.error('请选择合法的起止日期');
+                      return;
+                    }
+                    setCustomFrom(from);
+                    setCustomTo(to);
+                    setRangeKey('custom');
+                    setMoreOpen(false);
+                  }}
+                >
+                  应用
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {!isMoney && (
@@ -476,6 +647,14 @@ export default function StatsPage({ mode = 'focus' }) {
                   labelFormatter={(l) => `${l}`}
                   animationDuration={200}
                 />
+                <Bar
+                  dataKey="minutes"
+                  fill={t.primary}
+                  radius={[6, 6, 0, 0]}
+                  isAnimationActive
+                  animationDuration={700}
+                  animationEasing="ease-out"
+                />
                 <ReferenceLine
                   y={avgMinutes}
                   stroke={t.danger}
@@ -490,14 +669,6 @@ export default function StatsPage({ mode = 'focus' }) {
                       fill={t.danger}
                     />
                   )}
-                />
-                <Bar
-                  dataKey="minutes"
-                  fill={t.primary}
-                  radius={[6, 6, 0, 0]}
-                  isAnimationActive
-                  animationDuration={700}
-                  animationEasing="ease-out"
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -563,6 +734,16 @@ export default function StatsPage({ mode = 'focus' }) {
                   }}
                   animationDuration={200}
                 />
+                <Bar
+                  dataKey="spend_fen"
+                  name="花费"
+                  fill={t.accent}
+                  shape={
+                    <SpendBar plainColor={t.accent} totalColor={t.primary} />
+                  }
+                  isAnimationActive
+                  animationDuration={700}
+                />
                 <ReferenceLine
                   y={avgSpend}
                   stroke={t.danger}
@@ -578,16 +759,6 @@ export default function StatsPage({ mode = 'focus' }) {
                       formatter={(v) => formatFen(v)}
                     />
                   )}
-                />
-                <Bar
-                  dataKey="spend_fen"
-                  name="花费"
-                  fill={t.accent}
-                  shape={
-                    <SpendBar plainColor={t.accent} totalColor={t.primary} />
-                  }
-                  isAnimationActive
-                  animationDuration={700}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -629,7 +800,7 @@ export default function StatsPage({ mode = 'focus' }) {
       <div>
       <Card style={{ marginBottom: 14 }}>
         <h3 className="chart-card-title" style={{ color: t.text }}>
-          按计划时长分布（近 {days} 天）
+          按计划时长分布（{range.label}）
         </h3>
         <p className="muted" style={{ color: t.muted, margin: '0 0 12px' }}>
           Top {PIE_TOP} + 其他 · 右侧为常显图例（无需悬停）
@@ -880,6 +1051,19 @@ export default function StatsPage({ mode = 'focus' }) {
           </div>
         ) : null}
       </Card>
+
+      <p
+        className="muted"
+        style={{
+          color: t.muted,
+          fontSize: 12,
+          lineHeight: 1.7,
+          margin: '4px 4px 0',
+        }}
+      >
+        说明：专注时长只统计完整番茄钟的整块时间，不含碎片时间，并不等于当天实际学习或工作的总量。
+        一天的充实感来自你对自己付出的认可，而不只来自一个未必完整的数字——不必为它纠结。
+      </p>
       </div>
       )}
       <ContextMenu
