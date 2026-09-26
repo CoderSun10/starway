@@ -45,7 +45,11 @@ export default function ScheduleDetailPage() {
     load();
   }, [load]);
 
-  if (loading) return <Loading text="加载计划…" />;
+  useEffect(() => {
+    if (Number(data?.is_group) === 1) nav(`/schedules/${id}/plan`, { replace: true });
+  }, [data, id, nav]);
+
+  if (loading || Number(data?.is_group) === 1) return <Loading text="加载计划…" />;
   if (!data) return <Empty title="计划不存在" />;
 
   const tasks = stats?.tasks || data.tasks || [];

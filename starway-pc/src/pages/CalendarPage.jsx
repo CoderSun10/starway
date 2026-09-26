@@ -229,14 +229,28 @@ export default function CalendarPage() {
                     >
                       {Number(day.slice(8, 10))}
                     </span>
-                    {layer === 'detail' && rec?.focus_minutes > 0 ? (
-                      <span className="cal-focus" style={{ color: t.primary }}>
-                        {formatMinutesCompact(rec.focus_minutes)}
+                    {layer === 'detail' && day <= today ? (
+                      <span
+                        className="cal-focus"
+                        style={{
+                          color: rec?.focus_minutes > 0 ? t.primary : t.muted,
+                          opacity: rec?.focus_minutes > 0 ? 1 : 0.4,
+                        }}
+                      >
+                        {rec?.focus_minutes > 0
+                          ? formatMinutesCompact(rec.focus_minutes)
+                          : '—'}
                       </span>
                     ) : null}
-                    {layer === 'detail' && rec?.spend_fen > 0 ? (
-                      <span className="cal-spend" style={{ color: t.accent }}>
-                        {formatFen(rec.spend_fen)}
+                    {layer === 'detail' && day <= today ? (
+                      <span
+                        className="cal-spend"
+                        style={{
+                          color: rec?.spend_fen > 0 ? t.accent : t.muted,
+                          opacity: rec?.spend_fen > 0 ? 1 : 0.4,
+                        }}
+                      >
+                        {rec?.spend_fen > 0 ? formatFen(rec.spend_fen) : '—'}
                       </span>
                     ) : null}
                     {layer === 'heat' && raw > 0 ? (

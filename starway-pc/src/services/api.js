@@ -88,6 +88,21 @@ export async function fetchSchedules(params = {}) {
   return data.data;
 }
 
+export async function fetchFocusGroup(id) {
+  const { data } = await api.get(`/api/schedules/groups/${id}`);
+  return data.data;
+}
+
+export async function createFocusGroup(payload) {
+  const { data } = await api.post('/api/schedules/groups', payload);
+  return data.data;
+}
+
+export async function updateFocusGroup(id, payload) {
+  const { data } = await api.put(`/api/schedules/groups/${id}`, payload);
+  return data.data;
+}
+
 export async function fetchSchedule(id) {
   const { data } = await api.get(`/api/schedules/${id}`);
   return data.data;

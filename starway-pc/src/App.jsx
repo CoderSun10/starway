@@ -7,6 +7,7 @@ import TimerPage from './pages/TimerPage';
 import SchedulesPage from './pages/SchedulesPage';
 import ScheduleDetailPage from './pages/ScheduleDetailPage';
 import ScheduleFormPage from './pages/ScheduleFormPage';
+import FocusPlanPage from './pages/FocusPlanPage';
 import LedgerPage from './pages/LedgerPage';
 import ExpensesPage from './pages/ExpensesPage';
 import FixedExpensesPage from './pages/FixedExpensesPage';
@@ -75,7 +76,9 @@ export default function App() {
           <Route index element={<CalendarPage />} />
           <Route path="focus" element={<TimerPage />} />
           <Route path="schedules" element={<SchedulesPage />} />
+          <Route path="schedules/group/new" element={<FocusPlanPage />} />
           <Route path="schedules/new" element={<ScheduleFormPage />} />
+          <Route path="schedules/:id/plan" element={<FocusPlanPage />} />
           <Route path="schedules/:id" element={<ScheduleDetailPage />} />
           <Route path="schedules/:id/edit" element={<ScheduleFormPage />} />
           <Route path="stats" element={<StatsPage mode="focus" />} />

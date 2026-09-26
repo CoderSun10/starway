@@ -14,6 +14,7 @@ const budgetPeriodsRouter = require('./routes/budgetPeriods');
 const expensesRouter = require('./routes/expenses');
 const fixedExpensesRouter = require('./routes/fixedExpenses');
 const monthBudgetsRouter = require('./routes/monthBudgets');
+const focusGroupsRouter = require('./routes/focusGroups');
 
 function createApp() {
   const app = express();
@@ -52,7 +53,7 @@ function createApp() {
     res.json({
       success: true,
       name: '星程 API',
-      version: '1.2.0',
+      version: '1.4.0',
       endpoints: [
         'POST /api/auth/send-code',
         'POST /api/auth/register',
@@ -74,6 +75,8 @@ function createApp() {
         'GET/PUT/DELETE /api/budget-periods/:id',
         'GET /api/month-budgets',
         'PUT /api/month-budgets/:month',
+        'POST /api/schedules/groups',
+        'GET/PUT /api/schedules/groups/:id',
         'GET/POST /api/expenses',
         'GET/PUT/DELETE /api/expenses/:id',
         'GET/POST /api/fixed-expenses',
@@ -86,6 +89,7 @@ function createApp() {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api/schedules/groups', authRequired, focusGroupsRouter);
   app.use('/api/schedules', authRequired, schedulesRouter);
   app.use('/api/tasks', authRequired, tasksRouter);
   app.use('/api/sessions', authRequired, sessionsRouter);

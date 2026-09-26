@@ -83,8 +83,11 @@ router.get(
   asyncHandler(async (req, res) => {
     const { date, q, from, to } = req.query;
     const uid = userId(req);
+    const topOnly = String(req.query.top || '') === '1';
     let sql = 'SELECT * FROM schedules WHERE user_id = ?';
     const params = [uid];
+    if (topOnly) sql += ' AND parent_id IS NULL';
+    else sql += ' AND is_group = 0';
 
     if (date) {
       // 当天 00:00 ~ 次日 00:00（按客户端传入的 UTC 边界更准确）
@@ -113,9 +116,22 @@ router.get(
       params.push(toMysqlDatetime(to));
     }
     if (q) {
-      sql += ' AND (title LIKE ? OR description LIKE ?)';
       const like = `%${q}%`;
-      params.push(like, like);
+      if (topOnly) {
+        sql += ` AND (
+          title LIKE ? OR description LIKE ?
+          OR EXISTS (
+            SELECT 1 FROM schedules child
+            WHERE child.parent_id = schedules.id
+              AND child.user_id = ?
+              AND (child.title LIKE ? OR child.description LIKE ?)
+          )
+        )`;
+        params.push(like, like, uid, like, like);
+      } else {
+        sql += ' AND (title LIKE ? OR description LIKE ?)';
+        params.push(like, like);
+      }
     }
 
     sql += ' ORDER BY start_at DESC';
@@ -175,8 +191,56 @@ router.get(
         actual_focused_minutes: focusBySchedule[s.id]?.actual_focused_minutes || 0,
         session_count: focusBySchedule[s.id]?.session_count || 0,
         progress_percent: avg,
+        is_group: Number(s.is_group) || 0,
       };
     });
+
+    const groupIds = data.filter((s) => s.is_group === 1).map((s) => s.id);
+    if (groupIds.length) {
+      const ph = groupIds.map(() => '?').join(',');
+      const children = await query(
+        `SELECT id, parent_id FROM schedules
+         WHERE user_id = ? AND is_group = 0 AND parent_id IN (${ph})`,
+        [uid, ...groupIds]
+      );
+      const childIds = children.map((c) => c.id);
+      const percentsByChild = {};
+      const focusByChild = {};
+      if (childIds.length) {
+        const cph = childIds.map(() => '?').join(',');
+        const taskRows = await query(
+          `SELECT schedule_id, completed_percent FROM tasks WHERE schedule_id IN (${cph})`,
+          childIds
+        );
+        for (const t of taskRows) {
+          if (!percentsByChild[t.schedule_id]) percentsByChild[t.schedule_id] = [];
+          percentsByChild[t.schedule_id].push(Number(t.completed_percent || 0));
+        }
+        const focusRows = await query(
+          `SELECT schedule_id, COALESCE(SUM(duration_minutes), 0) AS mins
+           FROM pomodoro_sessions
+           WHERE schedule_id IN (${cph}) AND status = 'completed'
+           GROUP BY schedule_id`,
+          childIds
+        );
+        for (const f of focusRows) focusByChild[f.schedule_id] = Number(f.mins);
+      }
+      const byParent = {};
+      for (const c of children) {
+        if (!byParent[c.parent_id]) byParent[c.parent_id] = [];
+        byParent[c.parent_id].push(c.id);
+      }
+      for (const g of data) {
+        if (g.is_group !== 1) continue;
+        const kids = byParent[g.id] || [];
+        const percents = kids.flatMap((id) => percentsByChild[id] || []);
+        g.progress_percent = percents.length
+          ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length)
+          : 0;
+        g.actual_focused_minutes = kids.reduce((s, id) => s + (focusByChild[id] || 0), 0);
+        g.focused_minutes = Math.round(Number(g.planned_minutes) * (g.progress_percent / 100));
+      }
+    }
 
     res.json({ success: true, data });
   })
@@ -264,11 +328,14 @@ router.put(
   asyncHandler(async (req, res) => {
     const id = req.params.id;
     const uid = userId(req);
-    const existing = await query('SELECT id FROM schedules WHERE id = ? AND user_id = ?', [
-      id,
-      uid,
-    ]);
+    const existing = await query(
+      'SELECT id, is_group FROM schedules WHERE id = ? AND user_id = ?',
+      [id, uid]
+    );
     if (!existing.length) throw httpError(404, '计划不存在', 'SCHEDULE_NOT_FOUND');
+    if (Number(existing[0].is_group) === 1) {
+      throw httpError(400, '项目请在项目页里修改', 'VALIDATION_ERROR');
+    }
 
     const { title, description, start_at, end_at, planned_minutes, tasks } = req.body || {};
 

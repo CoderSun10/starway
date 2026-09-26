@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS email_codes (
 CREATE TABLE IF NOT EXISTS schedules (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id       BIGINT UNSIGNED NULL COMMENT '所属用户',
+  parent_id     BIGINT UNSIGNED NULL COMMENT '所属项目，空表示顶层（单独的计划或项目）',
+  is_group      TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '1=项目，0=计划；旧数据默认为单独的计划',
   title         VARCHAR(200)    NOT NULL COMMENT '计划标题',
   description   TEXT            NULL COMMENT '计划描述',
   start_at      DATETIME        NOT NULL COMMENT '开始时间 UTC',
@@ -47,7 +49,11 @@ CREATE TABLE IF NOT EXISTS schedules (
   INDEX idx_schedules_start (start_at),
   INDEX idx_schedules_end (end_at),
   INDEX idx_schedules_title (title),
-  INDEX idx_schedules_user (user_id)
+  INDEX idx_schedules_user (user_id),
+  INDEX idx_schedules_parent (parent_id),
+  CONSTRAINT fk_schedules_parent
+    FOREIGN KEY (parent_id) REFERENCES schedules (id)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 任务表（属于某个计划）
@@ -182,3 +188,4 @@ CREATE TABLE IF NOT EXISTS fixed_expense_records (
     FOREIGN KEY (fixed_expense_id) REFERENCES fixed_expenses(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='固定支出每月实际发生额与付款状态';
+
